@@ -20,6 +20,13 @@ export interface Display {
     width: number;
     height: number;
   };
+  size: {
+    width: number;
+    height: number;
+  };
+  scaleFactor: number;
+  rotation: number;
+  internal: boolean;
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {

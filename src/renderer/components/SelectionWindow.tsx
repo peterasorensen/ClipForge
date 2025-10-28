@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useRecordingStore } from '../store';
 import { CloseIcon } from './Icons';
+import DisplaySelectionOverlay from './DisplaySelectionOverlay';
+import type { Display } from '../../main/preload';
 
 const FullscreenOverlay = styled.div`
   width: 100vw;
@@ -219,17 +221,22 @@ interface Source {
   thumbnail: string;
 }
 
+type DisplayInfo = Display;
+
 const SelectionWindow: React.FC<SelectionWindowProps> = ({ mode }) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [currentPos, setCurrentPos] = useState({ x: 0, y: 0 });
   const [sources, setSources] = useState<Source[]>([]);
   const [selectedSource, setSelectedSource] = useState<Source | null>(null);
+  const [displays, setDisplays] = useState<DisplayInfo[]>([]);
   const { setSelectedArea, setSelectedSourceId } = useRecordingStore();
 
   useEffect(() => {
-    if (mode === 'window' || mode === 'display') {
+    if (mode === 'window') {
       loadSources();
+    } else if (mode === 'display') {
+      loadDisplays();
     }
 
     // ESC key to close
@@ -243,19 +250,21 @@ const SelectionWindow: React.FC<SelectionWindowProps> = ({ mode }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [mode]);
 
+  const loadDisplays = async () => {
+    try {
+      const displayList = await window.electronAPI.getDisplays();
+      setDisplays(displayList);
+    } catch (error) {
+      console.error('Error loading displays:', error);
+    }
+  };
+
   const loadSources = async () => {
     try {
       const allSources = await window.electronAPI.getSources();
-
-      if (mode === 'display') {
-        // Filter for screens only
-        const screens = allSources.filter((source) => source.id.startsWith('screen'));
-        setSources(screens);
-      } else {
-        // Filter for windows only
-        const windows = allSources.filter((source) => !source.id.startsWith('screen'));
-        setSources(windows);
-      }
+      // Filter for windows only
+      const windows = allSources.filter((source) => !source.id.startsWith('screen'));
+      setSources(windows);
     } catch (error) {
       console.error('Error loading sources:', error);
     }
@@ -304,6 +313,22 @@ const SelectionWindow: React.FC<SelectionWindowProps> = ({ mode }) => {
     window.electronAPI.startRecording();
   };
 
+  const handleDisplaySelect = async (display: DisplayInfo) => {
+    // Get the screen source for this display
+    const allSources = await window.electronAPI.getSources();
+    const screenSource = allSources.find((s) => s.id.startsWith('screen') && s.id.includes(String(display.id)));
+
+    // If we can't match by ID, just use the first screen source (for single display setups)
+    const sourceToUse = screenSource || allSources.find((s) => s.id.startsWith('screen'));
+
+    if (sourceToUse) {
+      setSelectedSourceId(sourceToUse.id);
+    }
+
+    // Notify main process and trigger recording toolbar
+    window.electronAPI.startRecording();
+  };
+
   const handleClose = () => {
     window.electronAPI.closeSelection();
   };
@@ -343,15 +368,25 @@ const SelectionWindow: React.FC<SelectionWindowProps> = ({ mode }) => {
     );
   }
 
+  // Display mode uses a different overlay
+  if (mode === 'display') {
+    return (
+      <DisplaySelectionOverlay
+        displays={displays}
+        onSelect={handleDisplaySelect}
+        onClose={handleClose}
+      />
+    );
+  }
+
+  // Window mode
   return (
     <FullscreenOverlay>
       <CloseButton onClick={handleClose}>
         <CloseIcon size={20} />
       </CloseButton>
       <WindowGrid>
-        <Title>
-          {mode === 'display' ? 'Select a Display' : 'Select a Window'}
-        </Title>
+        <Title>Select a Window</Title>
         <WindowList>
           {sources.map((source) => (
             <WindowCard
