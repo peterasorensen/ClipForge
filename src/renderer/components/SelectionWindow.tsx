@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { useRecordingStore } from '../store';
 import { CloseIcon } from './Icons';
 import DisplaySelectionOverlay from './DisplaySelectionOverlay';
+import WindowSelectionOverlay from './WindowSelectionOverlay';
 import type { Display } from '../../main/preload';
 
 const FullscreenOverlay = styled.div`
@@ -71,121 +72,6 @@ const StartButton = styled.button<{ $x: number; $y: number; $width: number; $hei
   }
 `;
 
-const WindowGrid = styled.div`
-  width: 100vw;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 40px;
-`;
-
-const WindowList = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-  max-width: 1200px;
-  width: 100%;
-  max-height: 70vh;
-  overflow-y: auto;
-  padding: 20px;
-
-  &::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: ${({ theme }) => theme.colors.background.secondary};
-    border-radius: ${({ theme }) => theme.borderRadius.sm};
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: ${({ theme }) => theme.colors.accent.primary};
-    border-radius: ${({ theme }) => theme.borderRadius.sm};
-  }
-`;
-
-const WindowCard = styled.button<{ $selected: boolean }>`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  background: ${({ theme }) => theme.colors.background.glass};
-  backdrop-filter: blur(20px);
-  border: 2px solid
-    ${({ $selected, theme }) =>
-      $selected ? theme.colors.accent.primary : theme.colors.border.primary};
-  border-radius: ${({ theme }) => theme.borderRadius.lg};
-  cursor: pointer;
-  transition: all ${({ theme }) => theme.transitions.fast};
-  box-shadow: ${({ $selected, theme }) =>
-    $selected ? theme.shadows.glow : theme.shadows.md};
-
-  &:hover {
-    border-color: ${({ theme }) => theme.colors.accent.primary};
-    transform: translateY(-4px);
-    box-shadow: ${({ theme }) => theme.shadows.glowLg};
-  }
-`;
-
-const WindowThumbnail = styled.img`
-  width: 100%;
-  height: 120px;
-  object-fit: cover;
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  background: ${({ theme }) => theme.colors.background.secondary};
-`;
-
-const WindowName = styled.div`
-  font-size: 13px;
-  font-weight: 500;
-  color: ${({ theme }) => theme.colors.text.primary};
-  text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  width: 100%;
-`;
-
-const Title = styled.h2`
-  font-size: 24px;
-  font-weight: 600;
-  color: ${({ theme }) => theme.colors.text.primary};
-  text-align: center;
-`;
-
-const FloatingButton = styled.button`
-  padding: 14px 40px;
-  background: ${({ theme }) => theme.colors.accent.primary};
-  color: ${({ theme }) => theme.colors.text.primary};
-  border-radius: ${({ theme }) => theme.borderRadius.full};
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all ${({ theme }) => theme.transitions.fast};
-  box-shadow: ${({ theme }) => theme.shadows.glow};
-  border: 1px solid ${({ theme }) => theme.colors.accent.hover};
-  animation: fadeIn 0.3s ease-out;
-
-  &:hover {
-    background: ${({ theme }) => theme.colors.accent.hover};
-    transform: translateY(-2px);
-    box-shadow: ${({ theme }) => theme.shadows.glowLg};
-  }
-
-  &:active {
-    transform: translateY(0);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-`;
-
 const CloseButton = styled.button`
   position: absolute;
   top: 20px;
@@ -219,6 +105,13 @@ interface Source {
   id: string;
   name: string;
   thumbnail: string;
+  appIcon?: string;
+  bounds?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
 }
 
 type DisplayInfo = Display;
@@ -228,7 +121,6 @@ const SelectionWindow: React.FC<SelectionWindowProps> = ({ mode }) => {
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [currentPos, setCurrentPos] = useState({ x: 0, y: 0 });
   const [sources, setSources] = useState<Source[]>([]);
-  const [selectedSource, setSelectedSource] = useState<Source | null>(null);
   const [displays, setDisplays] = useState<DisplayInfo[]>([]);
   const { setSelectedArea, setSelectedSourceId } = useRecordingStore();
 
@@ -296,17 +188,13 @@ const SelectionWindow: React.FC<SelectionWindowProps> = ({ mode }) => {
   };
 
   const handleStartRecording = async () => {
-    if (mode === 'area') {
-      const box = getSelectionBox();
-      setSelectedArea(box);
-      // For area mode, we still need to get a screen source
-      const allSources = await window.electronAPI.getSources();
-      const screenSource = allSources.find((s) => s.id.startsWith('screen'));
-      if (screenSource) {
-        setSelectedSourceId(screenSource.id);
-      }
-    } else if (selectedSource) {
-      setSelectedSourceId(selectedSource.id);
+    const box = getSelectionBox();
+    setSelectedArea(box);
+    // For area mode, we still need to get a screen source
+    const allSources = await window.electronAPI.getSources();
+    const screenSource = allSources.find((s) => s.id.startsWith('screen'));
+    if (screenSource) {
+      setSelectedSourceId(screenSource.id);
     }
 
     // Notify main process and trigger recording toolbar
@@ -329,12 +217,17 @@ const SelectionWindow: React.FC<SelectionWindowProps> = ({ mode }) => {
     window.electronAPI.startRecording();
   };
 
+  const handleWindowSelect = async (selectedWindow: Source) => {
+    setSelectedSourceId(selectedWindow.id);
+    // Notify main process and trigger recording toolbar
+    window.electronAPI.startRecording();
+  };
+
   const handleClose = () => {
     window.electronAPI.closeSelection();
   };
 
   const box = getSelectionBox();
-  const hasSelection = mode === 'area' ? box.width > 10 && box.height > 10 : selectedSource !== null;
 
   if (mode === 'area') {
     return (
@@ -379,30 +272,45 @@ const SelectionWindow: React.FC<SelectionWindowProps> = ({ mode }) => {
     );
   }
 
-  // Window mode
+  // Window mode - hover-based selection
+  if (mode === 'window') {
+    return (
+      <WindowSelectionOverlay
+        windows={sources}
+        onSelect={handleWindowSelect}
+        onClose={handleClose}
+      />
+    );
+  }
+
+  // Area mode
   return (
-    <FullscreenOverlay>
+    <FullscreenOverlay
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+    >
       <CloseButton onClick={handleClose}>
         <CloseIcon size={20} />
       </CloseButton>
-      <WindowGrid>
-        <Title>Select a Window</Title>
-        <WindowList>
-          {sources.map((source) => (
-            <WindowCard
-              key={source.id}
-              $selected={selectedSource?.id === source.id}
-              onClick={() => setSelectedSource(source)}
-            >
-              <WindowThumbnail src={source.thumbnail} alt={source.name} />
-              <WindowName>{source.name}</WindowName>
-            </WindowCard>
-          ))}
-        </WindowList>
-        <FloatingButton disabled={!hasSelection} onClick={handleStartRecording}>
-          Start Recording
-        </FloatingButton>
-      </WindowGrid>
+      {box.width > 10 && box.height > 10 && (
+        <>
+          <SelectionBox $x={box.x} $y={box.y} $width={box.width} $height={box.height}>
+            <DimensionLabel>
+              {Math.round(box.width)} × {Math.round(box.height)}
+            </DimensionLabel>
+          </SelectionBox>
+          <StartButton
+            $x={box.x}
+            $y={box.y}
+            $width={box.width}
+            $height={box.height}
+            onClick={handleStartRecording}
+          >
+            Start Recording
+          </StartButton>
+        </>
+      )}
     </FullscreenOverlay>
   );
 };

@@ -4,6 +4,13 @@ export interface DesktopCapturerSource {
   id: string;
   name: string;
   thumbnail: string;
+  appIcon?: string;
+  bounds?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
 }
 
 export interface Display {

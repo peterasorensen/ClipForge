@@ -158,8 +158,40 @@ ipcMain.handle('get-sources', async () => {
   const sources = await desktopCapturer.getSources({
     types: ['window', 'screen'],
     thumbnailSize: { width: 150, height: 150 },
+    fetchWindowIcons: true,
   });
-  return sources;
+
+  // Note: Electron's desktopCapturer doesn't provide window bounds
+  // For a production app, you'd need native modules to get window positions
+  // For now, we'll arrange windows in a visual grid
+  const windowsOnly = sources.filter(s => !s.id.startsWith('screen'));
+
+  // Create a simple grid layout for windows
+  const cols = 3;
+  const windowWidth = 300;
+  const windowHeight = 200;
+  const padding = 50;
+  const startX = 100;
+  const startY = 100;
+
+  const sourcesWithBounds = windowsOnly.map((source, index) => {
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+
+    return {
+      ...source,
+      thumbnail: source.thumbnail?.toDataURL?.() || source.thumbnail,
+      appIcon: source.appIcon?.toDataURL?.() || null,
+      bounds: {
+        x: startX + col * (windowWidth + padding),
+        y: startY + row * (windowHeight + padding),
+        width: windowWidth,
+        height: windowHeight,
+      },
+    };
+  });
+
+  return [...sourcesWithBounds, ...sources.filter(s => s.id.startsWith('screen'))];
 });
 
 ipcMain.handle('get-displays', async () => {
