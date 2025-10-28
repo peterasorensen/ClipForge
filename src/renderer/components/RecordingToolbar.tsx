@@ -1,0 +1,242 @@
+import React, { useEffect, useState } from 'react';
+import styled from 'styled-components';
+import { useRecordingStore } from '../store';
+import { useRecording } from '../hooks/useRecording';
+import { PlayIcon, PauseIcon, RestartIcon, StopIcon } from './Icons';
+
+const Container = styled.div`
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+const ToolbarContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: ${({ theme }) => theme.colors.background.glass};
+  backdrop-filter: blur(20px);
+  border: 1px solid ${({ theme }) => theme.colors.border.primary};
+  border-radius: ${({ theme }) => theme.borderRadius.full};
+  box-shadow: ${({ theme }) => theme.shadows.lg};
+  animation: fadeIn 0.3s ease-out;
+`;
+
+const RecordingIndicator = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const RecDot = styled.div`
+  width: 10px;
+  height: 10px;
+  background: ${({ theme }) => theme.colors.status.recording};
+  border-radius: 50%;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  box-shadow: 0 0 10px ${({ theme }) => theme.colors.status.recording};
+`;
+
+const Timer = styled.span`
+  font-size: 14px;
+  font-weight: 600;
+  color: ${({ theme }) => theme.colors.text.primary};
+  font-variant-numeric: tabular-nums;
+  min-width: 60px;
+`;
+
+const Divider = styled.div`
+  width: 1px;
+  height: 28px;
+  background: ${({ theme }) => theme.colors.border.primary};
+`;
+
+const ToolbarButton = styled.button<{ $variant?: 'danger' }>`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: ${({ $variant, theme }) =>
+    $variant === 'danger' ? theme.colors.status.recording : 'transparent'};
+  color: ${({ theme }) => theme.colors.text.primary};
+  border-radius: ${({ theme }) => theme.borderRadius.md};
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all ${({ theme }) => theme.transitions.fast};
+  white-space: nowrap;
+
+  &:hover {
+    background: ${({ $variant, theme }) =>
+      $variant === 'danger'
+        ? '#dc2626'
+        : theme.colors.background.tertiary};
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const IconButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  color: ${({ theme }) => theme.colors.text.primary};
+  border-radius: ${({ theme }) => theme.borderRadius.md};
+  cursor: pointer;
+  transition: all ${({ theme }) => theme.transitions.fast};
+  font-size: 18px;
+
+  &:hover {
+    background: ${({ theme }) => theme.colors.background.tertiary};
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const RecordingToolbar: React.FC = () => {
+  const {
+    isPaused,
+    recordingTime,
+    setIsPaused,
+    setRecordingTime,
+    mediaRecorder,
+    recordedChunks,
+    reset,
+  } = useRecordingStore();
+
+  const { startRecording, stopRecording } = useRecording();
+  const [startTime, setStartTime] = useState(Date.now());
+
+  useEffect(() => {
+    // Auto-start recording when toolbar appears
+    startRecording();
+  }, [startRecording]);
+
+  useEffect(() => {
+    // Start the timer
+    const interval = setInterval(() => {
+      if (!isPaused) {
+        setRecordingTime(Math.floor((Date.now() - startTime) / 1000));
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [isPaused, startTime, setRecordingTime]);
+
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handlePauseResume = () => {
+    if (mediaRecorder) {
+      if (isPaused) {
+        mediaRecorder.resume();
+        setStartTime(Date.now() - recordingTime * 1000);
+      } else {
+        mediaRecorder.pause();
+      }
+      setIsPaused(!isPaused);
+    }
+  };
+
+  const handleRestart = async () => {
+    stopRecording();
+    reset();
+    setRecordingTime(0);
+    setIsPaused(false);
+    setStartTime(Date.now());
+    // Restart recording after a brief delay
+    setTimeout(() => {
+      startRecording();
+    }, 100);
+  };
+
+  const handleFinish = async () => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      // Set up the stop handler before stopping
+      const stopHandler = async () => {
+        // Give it a moment for final chunks to arrive
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const buffer = Buffer.from(await blob.arrayBuffer());
+
+        // Save the recording
+        const result = await window.electronAPI.saveRecording(buffer);
+
+        if (result.success && !result.canceled) {
+          console.log('Recording saved:', result.filePath);
+          alert(`Recording saved to: ${result.filePath}`);
+        }
+
+        // Reset state and close toolbar
+        reset();
+        window.electronAPI.stopRecording();
+      };
+
+      mediaRecorder.onstop = stopHandler;
+      mediaRecorder.stop();
+    } else {
+      // If not recording, just close
+      window.electronAPI.stopRecording();
+    }
+  };
+
+  return (
+    <Container>
+      <ToolbarContainer>
+        <RecordingIndicator>
+          <RecDot />
+          <Timer>{formatTime(recordingTime)}</Timer>
+        </RecordingIndicator>
+
+        <Divider />
+
+        <IconButton
+          onClick={handlePauseResume}
+          title={isPaused ? 'Resume' : 'Pause'}
+        >
+          {isPaused ? <PlayIcon size={18} /> : <PauseIcon size={18} />}
+        </IconButton>
+
+        <IconButton onClick={handleRestart} title="Restart">
+          <RestartIcon size={18} />
+        </IconButton>
+
+        <Divider />
+
+        <ToolbarButton $variant="danger" onClick={handleFinish}>
+          <StopIcon size={16} />
+          <span>Finish</span>
+        </ToolbarButton>
+      </ToolbarContainer>
+    </Container>
+  );
+};
+
+export default RecordingToolbar;
