@@ -60,7 +60,7 @@ const createControlBar = (): void => {
 
 const createSelectionWindow = (mode: 'area' | 'window' | 'display'): void => {
   const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, height } = primaryDisplay.bounds;
+  const { width, height, x, y } = primaryDisplay.bounds;
 
   if (selectionWindow) {
     selectionWindow.close();
@@ -69,16 +69,16 @@ const createSelectionWindow = (mode: 'area' | 'window' | 'display'): void => {
   selectionWindow = new BrowserWindow({
     width,
     height,
-    x: 0,
-    y: 0,
+    x,
+    y,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     resizable: false,
     minimizable: false,
     maximizable: false,
-    fullscreen: true,
     skipTaskbar: true,
+    hasShadow: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
