@@ -18,11 +18,16 @@ export const useRecording = () => {
 
   const startRecording = useCallback(async () => {
     try {
+      console.log('useRecording: startRecording called');
+      console.log('useRecording: selectedSourceId =', selectedSourceId);
+      console.log('useRecording: selectedArea =', selectedArea);
+
       clearRecordedChunks();
 
       let videoStream: MediaStream | null = null;
 
       if (selectedSourceId) {
+        console.log('useRecording: Using selectedSourceId path');
         // Window or Display recording
         const constraints = {
           audio: false,
@@ -36,10 +41,12 @@ export const useRecording = () => {
 
         videoStream = await navigator.mediaDevices.getUserMedia(constraints);
       } else if (selectedArea) {
+        console.log('useRecording: Using selectedArea path');
         // Area recording - we'll use screen capture and crop in post
         // For now, capture the entire screen (cropping would be done during export)
         const sources = await window.electronAPI.getSources();
         const screenSource = sources.find((s) => s.id.startsWith('screen'));
+        console.log('useRecording: Found screen source:', screenSource?.id);
 
         if (screenSource) {
           const constraints = {
@@ -57,8 +64,11 @@ export const useRecording = () => {
       }
 
       if (!videoStream) {
+        console.error('useRecording: No video stream - selectedSourceId:', selectedSourceId, 'selectedArea:', selectedArea);
         throw new Error('Failed to get video stream');
       }
+
+      console.log('useRecording: Got video stream successfully');
 
       // Add audio if microphone is enabled
       let audioStream: MediaStream | null = null;

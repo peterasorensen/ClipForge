@@ -56,6 +56,7 @@ new Store();
 let controlBar: BrowserWindow | null = null;
 let selectionWindow: BrowserWindow | null = null;
 let recordingToolbar: BrowserWindow | null = null;
+let recordingConfig: { selectedSourceId?: string | null; selectedArea?: { x: number; y: number; width: number; height: number } | null } | null = null;
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -139,6 +140,11 @@ const createSelectionWindow = (mode: 'area' | 'window' | 'display'): void => {
 
   selectionWindow.setAlwaysOnTop(true, 'screen-saver');
 
+  // Open DevTools in development
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    selectionWindow.webContents.openDevTools({ mode: 'detach' });
+  }
+
   selectionWindow.on('closed', () => {
     selectionWindow = null;
   });
@@ -177,6 +183,11 @@ const createRecordingToolbar = (): void => {
 
   recordingToolbar.setAlwaysOnTop(true, 'screen-saver');
   recordingToolbar.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  // Open DevTools in development
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    recordingToolbar.webContents.openDevTools({ mode: 'detach' });
+  }
 };
 
 // App lifecycle
@@ -256,7 +267,11 @@ ipcMain.on('close-selection', () => {
   }
 });
 
-ipcMain.on('start-recording', () => {
+ipcMain.on('start-recording', (_event, config?: { selectedSourceId?: string | null; selectedArea?: { x: number; y: number; width: number; height: number } | null }) => {
+  // Store the recording config so RecordingToolbar can retrieve it
+  recordingConfig = config || null;
+  console.log('Main: Received start-recording with config:', recordingConfig);
+
   if (controlBar) {
     controlBar.hide();
   }
@@ -272,9 +287,16 @@ ipcMain.on('stop-recording', () => {
     recordingToolbar.close();
     recordingToolbar = null;
   }
+  // Clear the recording config
+  recordingConfig = null;
   if (controlBar) {
     controlBar.show();
   }
+});
+
+ipcMain.handle('get-recording-config', async () => {
+  console.log('Main: RecordingToolbar requesting config, returning:', recordingConfig);
+  return recordingConfig;
 });
 
 ipcMain.handle('save-recording', async (_event, videoData: Buffer) => {

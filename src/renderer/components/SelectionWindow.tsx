@@ -193,12 +193,22 @@ const SelectionWindow: React.FC<SelectionWindowProps> = ({ mode }) => {
     // For area mode, we still need to get a screen source
     const allSources = await window.electronAPI.getSources();
     const screenSource = allSources.find((s) => s.id.startsWith('screen'));
+    let sourceId: string | null = null;
     if (screenSource) {
+      sourceId = screenSource.id;
       setSelectedSourceId(screenSource.id);
     }
 
-    // Notify main process and trigger recording toolbar
-    window.electronAPI.startRecording();
+    console.log('SelectionWindow (Area): Sending config to main process:', {
+      selectedSourceId: sourceId,
+      selectedArea: box,
+    });
+
+    // Notify main process and trigger recording toolbar with config
+    window.electronAPI.startRecording({
+      selectedSourceId: sourceId,
+      selectedArea: box,
+    });
   };
 
   const handleDisplaySelect = async (display: DisplayInfo) => {
@@ -209,18 +219,37 @@ const SelectionWindow: React.FC<SelectionWindowProps> = ({ mode }) => {
     // If we can't match by ID, just use the first screen source (for single display setups)
     const sourceToUse = screenSource || allSources.find((s) => s.id.startsWith('screen'));
 
+    let sourceId: string | null = null;
     if (sourceToUse) {
+      sourceId = sourceToUse.id;
       setSelectedSourceId(sourceToUse.id);
     }
 
-    // Notify main process and trigger recording toolbar
-    window.electronAPI.startRecording();
+    console.log('SelectionWindow (Display): Sending config to main process:', {
+      selectedSourceId: sourceId,
+      selectedArea: null,
+    });
+
+    // Notify main process and trigger recording toolbar with config
+    window.electronAPI.startRecording({
+      selectedSourceId: sourceId,
+      selectedArea: null,
+    });
   };
 
   const handleWindowSelect = async (selectedWindow: Source) => {
     setSelectedSourceId(selectedWindow.id);
-    // Notify main process and trigger recording toolbar
-    window.electronAPI.startRecording();
+
+    console.log('SelectionWindow (Window): Sending config to main process:', {
+      selectedSourceId: selectedWindow.id,
+      selectedArea: null,
+    });
+
+    // Notify main process and trigger recording toolbar with config
+    window.electronAPI.startRecording({
+      selectedSourceId: selectedWindow.id,
+      selectedArea: null,
+    });
   };
 
   const handleClose = () => {

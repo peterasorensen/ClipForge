@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import styled from 'styled-components';
 import { useRecordingStore } from '../store';
 import { useRecording } from '../hooks/useRecording';
@@ -125,15 +125,54 @@ const RecordingToolbar: React.FC = () => {
     mediaRecorder,
     recordedChunks,
     reset,
+    setSelectedSourceId,
+    setSelectedArea,
   } = useRecordingStore();
 
   const { startRecording, stopRecording } = useRecording();
   const [startTime, setStartTime] = useState(Date.now());
+  const hasInitialized = useRef(false);
+  const [configLoaded, setConfigLoaded] = useState(false);
 
+  // First effect: Load config on mount
   useEffect(() => {
-    // Auto-start recording when toolbar appears
-    startRecording();
-  }, [startRecording]);
+    if (hasInitialized.current) {
+      console.log('RecordingToolbar: Already initialized, skipping');
+      return;
+    }
+    hasInitialized.current = true;
+    console.log('RecordingToolbar: Initializing...');
+
+    // Fetch recording config
+    const initRecording = async () => {
+      const config = await window.electronAPI.getRecordingConfig();
+      console.log('RecordingToolbar: Received config from main process:', config);
+
+      if (config) {
+        if (config.selectedSourceId) {
+          console.log('RecordingToolbar: Setting selectedSourceId:', config.selectedSourceId);
+          setSelectedSourceId(config.selectedSourceId);
+        }
+        if (config.selectedArea) {
+          console.log('RecordingToolbar: Setting selectedArea:', config.selectedArea);
+          setSelectedArea(config.selectedArea);
+        }
+        setConfigLoaded(true);
+      }
+    };
+
+    initRecording();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Second effect: Start recording once config is loaded and startRecording is ready
+  useEffect(() => {
+    if (configLoaded) {
+      console.log('RecordingToolbar: Config loaded, starting recording...');
+      startRecording();
+      setConfigLoaded(false); // Only start once
+    }
+  }, [configLoaded, startRecording]);
 
   useEffect(() => {
     // Start the timer
@@ -184,10 +223,11 @@ const RecordingToolbar: React.FC = () => {
         await new Promise(resolve => setTimeout(resolve, 100));
 
         const blob = new Blob(recordedChunks, { type: 'video/webm' });
-        const buffer = Buffer.from(await blob.arrayBuffer());
+        const arrayBuffer = await blob.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
 
         // Save the recording
-        const result = await window.electronAPI.saveRecording(buffer);
+        const result = await window.electronAPI.saveRecording(uint8Array);
 
         if (result.success && !result.canceled) {
           console.log('Recording saved:', result.filePath);

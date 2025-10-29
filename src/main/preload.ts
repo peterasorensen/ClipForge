@@ -65,8 +65,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeSelection: (): void =>
     ipcRenderer.send('close-selection'),
 
-  startRecording: (): void =>
-    ipcRenderer.send('start-recording'),
+  startRecording: (config?: { selectedSourceId?: string | null; selectedArea?: { x: number; y: number; width: number; height: number } | null }): void =>
+    ipcRenderer.send('start-recording', config),
 
   stopRecording: (): void =>
     ipcRenderer.send('stop-recording'),
@@ -76,6 +76,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   checkFFmpeg: (): Promise<boolean> =>
     ipcRenderer.invoke('check-ffmpeg'),
+
+  getRecordingConfig: (): Promise<{ selectedSourceId?: string | null; selectedArea?: { x: number; y: number; width: number; height: number } | null } | null> =>
+    ipcRenderer.invoke('get-recording-config'),
 });
 
 declare global {
@@ -86,10 +89,11 @@ declare global {
       hitTestWindow: (x: number, y: number) => Promise<HitTestWindow | {}>;
       openSelection: (mode: 'area' | 'window' | 'display') => void;
       closeSelection: () => void;
-      startRecording: () => void;
+      startRecording: (config?: { selectedSourceId?: string | null; selectedArea?: { x: number; y: number; width: number; height: number } | null }) => void;
       stopRecording: () => void;
       saveRecording: (videoData: Buffer) => Promise<{ success: boolean; filePath?: string; canceled?: boolean; error?: string }>;
       checkFFmpeg: () => Promise<boolean>;
+      getRecordingConfig: () => Promise<{ selectedSourceId?: string | null; selectedArea?: { x: number; y: number; width: number; height: number } | null } | null>;
     };
   }
 }
