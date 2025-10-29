@@ -234,12 +234,11 @@ const VideoEditor: React.FC = () => {
     if (hasLoadedRecording.current) {
       return;
     }
+    hasLoadedRecording.current = true;
 
     const loadPendingRecording = async () => {
       const recordingData = await window.electronAPI.getPendingRecording();
       if (recordingData) {
-        hasLoadedRecording.current = true;
-
         console.log('Loading recording:', recordingData.filePath);
 
         // Wait a bit to ensure file is fully written and closed
