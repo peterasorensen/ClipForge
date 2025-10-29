@@ -10,19 +10,83 @@ const PlayerContainer = styled.div`
   gap: 16px;
 `;
 
-const VideoWrapper = styled.div`
+const PlayerControls = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 8px;
+`;
+
+const AspectRatioSelect = styled.select`
+  padding: 6px 12px;
+  border-radius: ${({ theme }) => theme.borderRadius.sm};
+  background: ${({ theme }) => theme.colors.background.tertiary};
+  color: ${({ theme }) => theme.colors.text.primary};
+  border: 1px solid ${({ theme }) => theme.colors.border.primary};
+  font-size: 13px;
+  cursor: pointer;
+  transition: all ${({ theme }) => theme.transitions.fast};
+
+  &:hover {
+    border-color: ${({ theme }) => theme.colors.border.accent};
+    background: ${({ theme }) => theme.colors.background.glass};
+  }
+
+  &:focus {
+    outline: none;
+    border-color: ${({ theme }) => theme.colors.accent.primary};
+  }
+`;
+
+const CropButton = styled.button<{ $active?: boolean }>`
+  padding: 6px 12px;
+  border-radius: ${({ theme }) => theme.borderRadius.sm};
+  background: ${({ $active, theme }) =>
+    $active ? theme.colors.accent.primary : theme.colors.background.tertiary};
+  color: ${({ theme }) => theme.colors.text.primary};
+  border: 1px solid ${({ $active, theme }) =>
+    $active ? theme.colors.accent.primary : theme.colors.border.primary};
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all ${({ theme }) => theme.transitions.fast};
+
+  &:hover {
+    border-color: ${({ theme }) => theme.colors.accent.primary};
+    background: ${({ $active, theme }) =>
+      $active ? theme.colors.accent.hover : theme.colors.background.glass};
+    box-shadow: ${({ $active, theme }) => ($active ? theme.shadows.glow : 'none')};
+  }
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+`;
+
+const VideoWrapper = styled.div<{ $aspectRatio?: string }>`
   position: relative;
   background: #000;
   border-radius: ${({ theme }) => theme.borderRadius.lg};
   overflow: hidden;
   box-shadow: ${({ theme }) => theme.shadows.lg};
   border: 1px solid ${({ theme }) => theme.colors.border.primary};
+  width: 100%;
+  ${({ $aspectRatio }) => $aspectRatio && `aspect-ratio: ${$aspectRatio};`}
+  max-height: 70vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 `;
 
-const Video = styled.video`
+const Video = styled.video<{ $objectFit: 'contain' | 'cover' }>`
   width: 100%;
-  height: auto;
+  height: 100%;
   display: block;
+  object-fit: ${({ $objectFit }) => $objectFit};
 `;
 
 const VideoOverlay = styled.div<{ $show: boolean }>`
@@ -99,10 +163,15 @@ const EmptyPlayer = styled.div`
   }
 `;
 
+type AspectRatio = 'auto' | '16:9' | '9:16' | '4:3' | '1:1' | '21:9';
+
 const VideoPlayer: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [showOverlay, setShowOverlay] = useState(false);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('auto');
+  const [cropMode, setCropMode] = useState(false);
+  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
 
   const {
     currentTime,
@@ -176,6 +245,7 @@ const VideoPlayer: React.FC = () => {
 
     const handleLoadedMetadata = () => {
       setDuration(video.duration);
+      setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
     };
 
     const handleEnded = () => {
@@ -210,6 +280,16 @@ const VideoPlayer: React.FC = () => {
     setShowOverlay(false);
   };
 
+  const getAspectRatioValue = (): string | undefined => {
+    if (aspectRatio === 'auto') {
+      if (videoDimensions) {
+        return `${videoDimensions.width} / ${videoDimensions.height}`;
+      }
+      return undefined;
+    }
+    return aspectRatio.replace(':', ' / ');
+  };
+
   if (!videoSrc) {
     return (
       <PlayerContainer>
@@ -226,12 +306,37 @@ const VideoPlayer: React.FC = () => {
 
   return (
     <PlayerContainer>
+      <PlayerControls>
+        <AspectRatioSelect
+          value={aspectRatio}
+          onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
+        >
+          <option value="auto">Auto</option>
+          <option value="16:9">16:9 (Landscape)</option>
+          <option value="9:16">9:16 (Portrait)</option>
+          <option value="4:3">4:3 (Classic)</option>
+          <option value="1:1">1:1 (Square)</option>
+          <option value="21:9">21:9 (Ultrawide)</option>
+        </AspectRatioSelect>
+        <CropButton
+          $active={cropMode}
+          onClick={() => setCropMode(!cropMode)}
+          title={cropMode ? 'Crop to fill (active)' : 'Fit to contain'}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15" />
+            <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15" />
+          </svg>
+          {cropMode ? 'Fill' : 'Fit'}
+        </CropButton>
+      </PlayerControls>
       <VideoWrapper
+        $aspectRatio={getAspectRatioValue()}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onClick={handleVideoClick}
       >
-        <Video ref={videoRef} src={videoSrc} />
+        <Video ref={videoRef} src={videoSrc} $objectFit={cropMode ? 'cover' : 'contain'} />
         <VideoOverlay $show={showOverlay}>
           <PlayButton>
             <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
@@ -243,6 +348,7 @@ const VideoPlayer: React.FC = () => {
       <PlayerInfo>
         <span>Preview</span>
         <span>
+          {videoDimensions && `${videoDimensions.width}×${videoDimensions.height} • `}
           {tracks.length} track{tracks.length !== 1 ? 's' : ''} • {mediaItems.length} item
           {mediaItems.length !== 1 ? 's' : ''}
         </span>

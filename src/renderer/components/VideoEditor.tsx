@@ -97,11 +97,19 @@ const MainContent = styled.main`
   overflow: hidden;
 `;
 
+const LeftPanelWrapper = styled.div<{ $collapsed: boolean }>`
+  position: relative;
+  display: flex;
+  width: ${({ $collapsed }) => ($collapsed ? '0' : '280px')};
+  transition: width ${({ theme }) => theme.transitions.normal};
+`;
+
 const LeftPanel = styled.aside`
   width: 280px;
   background: ${({ theme }) => theme.colors.background.secondary};
   border-right: 1px solid ${({ theme }) => theme.colors.border.primary};
   overflow-y: auto;
+  position: relative;
 
   &::-webkit-scrollbar {
     width: 6px;
@@ -118,6 +126,70 @@ const LeftPanel = styled.aside`
     &:hover {
       background: ${({ theme }) => theme.colors.border.accent};
     }
+  }
+`;
+
+const TogglePanelButton = styled.button<{ $collapsed: boolean }>`
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 28px;
+  height: 28px;
+  background: ${({ theme }) => theme.colors.background.tertiary};
+  border: 1px solid ${({ theme }) => theme.colors.border.primary};
+  border-radius: ${({ theme }) => theme.borderRadius.sm};
+  color: ${({ theme }) => theme.colors.text.secondary};
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+  transition: all ${({ theme }) => theme.transitions.fast};
+
+  &:hover {
+    background: ${({ theme }) => theme.colors.background.glass};
+    border-color: ${({ theme }) => theme.colors.accent.primary};
+    color: ${({ theme }) => theme.colors.text.primary};
+    transform: scale(1.1);
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+    transition: transform ${({ theme }) => theme.transitions.fast};
+    transform: ${({ $collapsed }) => ($collapsed ? 'rotate(0deg)' : 'rotate(180deg)')};
+  }
+`;
+
+const ExpandButton = styled.button`
+  position: absolute;
+  top: 16px;
+  left: 12px;
+  width: 32px;
+  height: 32px;
+  background: ${({ theme }) => theme.colors.background.secondary};
+  border: 1px solid ${({ theme }) => theme.colors.border.primary};
+  border-radius: ${({ theme }) => theme.borderRadius.sm};
+  color: ${({ theme }) => theme.colors.text.secondary};
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+  transition: all ${({ theme }) => theme.transitions.fast};
+  box-shadow: ${({ theme }) => theme.shadows.md};
+
+  &:hover {
+    background: ${({ theme }) => theme.colors.background.tertiary};
+    border-color: ${({ theme }) => theme.colors.accent.primary};
+    color: ${({ theme }) => theme.colors.text.primary};
+    transform: scale(1.1);
+    box-shadow: ${({ theme }) => theme.shadows.lg};
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
   }
 `;
 
@@ -227,6 +299,7 @@ const VideoEditor: React.FC = () => {
   } = useEditorStore();
 
   const [showExportPanel, setShowExportPanel] = useState(false);
+  const [isLibraryCollapsed, setIsLibraryCollapsed] = useState(false);
   const hasLoadedRecording = useRef(false);
 
   useEffect(() => {
@@ -351,9 +424,30 @@ const VideoEditor: React.FC = () => {
       </Header>
 
       <MainContent>
-        <LeftPanel>
-          <MediaLibrary />
-        </LeftPanel>
+        {isLibraryCollapsed && (
+          <ExpandButton
+            onClick={() => setIsLibraryCollapsed(false)}
+            title="Show Media Library"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </ExpandButton>
+        )}
+        <LeftPanelWrapper $collapsed={isLibraryCollapsed}>
+          <LeftPanel>
+            <MediaLibrary />
+            <TogglePanelButton
+              $collapsed={isLibraryCollapsed}
+              onClick={() => setIsLibraryCollapsed(true)}
+              title="Hide Media Library"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </TogglePanelButton>
+          </LeftPanel>
+        </LeftPanelWrapper>
 
         <CenterContent>
           <PreviewArea>

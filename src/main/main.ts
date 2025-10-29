@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, screen, dialog, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, desktopCapturer, screen, dialog, protocol, Tray, nativeImage, Menu } from 'electron';
 import path from 'path';
 import Store from 'electron-store';
 import fs from 'fs/promises';
@@ -73,6 +73,64 @@ let recordingToolbar: BrowserWindow | null = null;
 let editorWindow: BrowserWindow | null = null;
 let recordingConfig: { selectedSourceId?: string | null; selectedArea?: { x: number; y: number; width: number; height: number } | null } | null = null;
 let pendingRecordingData: Uint8Array | null = null;
+let tray: Tray | null = null;
+
+const createTray = (): void => {
+  // Create a simple 16x16 circle icon for the tray
+  // Using a simple shape that will definitely be visible
+  const canvas = `
+  <svg width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="8" cy="8" r="6" fill="black" />
+    <circle cx="8" cy="8" r="3" fill="red" />
+  </svg>`;
+
+  const iconData = 'data:image/svg+xml;base64,' + Buffer.from(canvas).toString('base64');
+  const icon = nativeImage.createFromDataURL(iconData);
+  icon.setTemplateImage(true); // This makes it adapt to light/dark menu bar
+
+  tray = new Tray(icon);
+  tray.setToolTip('Clip Forge - Screen Recording');
+
+  console.log('Tray created successfully');
+
+  // Create context menu for the tray
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Show Clip Forge',
+      click: () => {
+        if (controlBar) {
+          controlBar.show();
+          controlBar.focus();
+        } else {
+          createControlBar();
+        }
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => {
+        app.quit();
+      }
+    }
+  ]);
+
+  tray.setContextMenu(contextMenu);
+
+  // Show window when tray icon is clicked
+  tray.on('click', () => {
+    if (controlBar) {
+      if (controlBar.isVisible()) {
+        controlBar.focus();
+      } else {
+        controlBar.show();
+        controlBar.focus();
+      }
+    } else {
+      createControlBar();
+    }
+  });
+};
 
 const createControlBar = (startWithHash?: string): void => {
   const primaryDisplay = screen.getPrimaryDisplay();
@@ -303,6 +361,44 @@ app.on('ready', () => {
       return callback({ statusCode: 404 });
     }
   });
+
+  // Create application menu (this makes the app name appear in menu bar)
+  const template: any[] = [
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+
+  // Create tray icon - MUST be after ready event
+  createTray();
+
+  // Show dock icon (since windows use skipTaskbar)
+  if (process.platform === 'darwin') {
+    app.dock.show();
+  }
 
   createControlBar();
 });
