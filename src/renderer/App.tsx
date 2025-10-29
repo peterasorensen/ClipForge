@@ -2,14 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { ThemeProvider } from 'styled-components';
 import { theme } from './theme';
 import { GlobalStyles } from './GlobalStyles';
+import StartScreen from './components/StartScreen';
 import ControlBar from './components/ControlBar';
 import SelectionWindow from './components/SelectionWindow';
 import RecordingToolbar from './components/RecordingToolbar';
+import VideoEditor from './components/VideoEditor';
 
-type ViewMode = 'control-bar' | 'selection' | 'recording-toolbar';
+type ViewMode = 'start-screen' | 'control-bar' | 'selection' | 'recording-toolbar' | 'editor';
 
 const App: React.FC = () => {
-  const [viewMode, setViewMode] = useState<ViewMode>('control-bar');
+  const [viewMode, setViewMode] = useState<ViewMode>('start-screen');
   const [selectionMode, setSelectionMode] = useState<'area' | 'window' | 'display'>('area');
 
   useEffect(() => {
@@ -22,8 +24,12 @@ const App: React.FC = () => {
       setViewMode('selection');
     } else if (hash === '#recording-toolbar') {
       setViewMode('recording-toolbar');
-    } else {
+    } else if (hash === '#editor') {
+      setViewMode('editor');
+    } else if (hash === '#control-bar') {
       setViewMode('control-bar');
+    } else {
+      setViewMode('start-screen');
     }
 
     // Listen for hash changes
@@ -35,8 +41,12 @@ const App: React.FC = () => {
         setViewMode('selection');
       } else if (newHash === '#recording-toolbar') {
         setViewMode('recording-toolbar');
-      } else {
+      } else if (newHash === '#editor') {
+        setViewMode('editor');
+      } else if (newHash === '#control-bar') {
         setViewMode('control-bar');
+      } else {
+        setViewMode('start-screen');
       }
     };
 
@@ -47,9 +57,11 @@ const App: React.FC = () => {
   return (
     <ThemeProvider theme={theme}>
       <GlobalStyles />
+      {viewMode === 'start-screen' && <StartScreen />}
       {viewMode === 'control-bar' && <ControlBar />}
       {viewMode === 'selection' && <SelectionWindow mode={selectionMode} />}
       {viewMode === 'recording-toolbar' && <RecordingToolbar />}
+      {viewMode === 'editor' && <VideoEditor />}
     </ThemeProvider>
   );
 };

@@ -1,6 +1,8 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, screen, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, desktopCapturer, screen, dialog, protocol } from 'electron';
 import path from 'path';
 import Store from 'electron-store';
+import fs from 'fs/promises';
+import ffmpeg from 'fluent-ffmpeg';
 
 // Load native addon with proper path resolution
 // Try multiple paths to handle both dev and production builds
@@ -21,14 +23,26 @@ interface WindowHelper {
   };
 }
 
-let windowHelper: WindowHelper;
+let windowHelper: WindowHelper | undefined;
+
+// Determine the base path for native modules
+const getBasePath = () => {
+  if (app.isPackaged) {
+    // In production, native modules are in Resources directory
+    return process.resourcesPath;
+  } else {
+    // In development, use project root
+    return process.cwd();
+  }
+};
+
 const possiblePaths = [
-  // Development path (from project root)
-  path.join(process.cwd(), 'native', 'window-helper'),
-  // Relative to built main.js
+  // Development path (from project root) or packaged path (from Resources)
+  path.join(getBasePath(), 'native', 'window-helper'),
+  // Unpacked from asar
   path.join(__dirname, '..', '..', 'native', 'window-helper'),
-  // Relative to app path
-  path.join(__dirname, '..', '..', '..', 'native', 'window-helper'),
+  // Alternative unpacked location
+  path.join(__dirname, '..', '..', '..', 'Resources', 'native', 'window-helper'),
 ];
 
 for (const addonPath of possiblePaths) {
@@ -37,7 +51,7 @@ for (const addonPath of possiblePaths) {
     console.log('Successfully loaded window helper from:', addonPath);
     break;
   } catch (e) {
-    // Try next path
+    console.log('Failed to load from:', addonPath);
   }
 }
 
@@ -56,22 +70,27 @@ new Store();
 let controlBar: BrowserWindow | null = null;
 let selectionWindow: BrowserWindow | null = null;
 let recordingToolbar: BrowserWindow | null = null;
+let editorWindow: BrowserWindow | null = null;
 let recordingConfig: { selectedSourceId?: string | null; selectedArea?: { x: number; y: number; width: number; height: number } | null } | null = null;
+let pendingRecordingData: Uint8Array | null = null;
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require('electron-squirrel-startup')) {
-  app.quit();
-}
-
-const createControlBar = (): void => {
+const createControlBar = (startWithHash?: string): void => {
   const primaryDisplay = screen.getPrimaryDisplay();
-  const { width } = primaryDisplay.workAreaSize;
+  const { width, height } = primaryDisplay.workAreaSize;
+
+  // Default dimensions for start screen, can be modified for control bar
+  const windowWidth = startWithHash === '#control-bar' ? 600 : 400;
+  const windowHeight = startWithHash === '#control-bar' ? 80 : 140;
+
+  // Position based on mode
+  const xPos = Math.floor((width - windowWidth) / 2);
+  const yPos = startWithHash === '#control-bar' ? 20 : Math.floor((height - windowHeight) / 2);
 
   controlBar = new BrowserWindow({
-    width: 600,
-    height: 80,
-    x: Math.floor((width - 600) / 2),
-    y: 20,
+    width: windowWidth,
+    height: windowHeight,
+    x: xPos,
+    y: yPos,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -88,9 +107,12 @@ const createControlBar = (): void => {
 
   // Load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    controlBar.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    const url = startWithHash ? `${MAIN_WINDOW_VITE_DEV_SERVER_URL}${startWithHash}` : MAIN_WINDOW_VITE_DEV_SERVER_URL;
+    controlBar.loadURL(url);
   } else {
-    controlBar.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+    controlBar.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`), {
+      hash: startWithHash?.replace('#', '') || '',
+    });
   }
 
   controlBar.setAlwaysOnTop(true, 'screen-saver');
@@ -100,6 +122,30 @@ const createControlBar = (): void => {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     controlBar.webContents.openDevTools({ mode: 'detach' });
   }
+
+  // Listen for hash changes to resize/reposition window
+  controlBar.webContents.on('did-navigate-in-page', (_event, url) => {
+    const hash = new URL(url).hash;
+    if (hash === '#editor') {
+      // Close control bar and open editor window
+      controlBar?.hide();
+      createEditorWindow();
+    } else if (hash === '#control-bar') {
+      controlBar?.setBounds({
+        width: 600,
+        height: 80,
+        x: Math.floor((width - 600) / 2),
+        y: 20,
+      });
+    } else if (hash === '' || hash === '#start-screen') {
+      controlBar?.setBounds({
+        width: 400,
+        height: 140,
+        x: Math.floor((width - 400) / 2),
+        y: Math.floor((height - 140) / 2),
+      });
+    }
+  });
 };
 
 const createSelectionWindow = (mode: 'area' | 'window' | 'display'): void => {
@@ -155,9 +201,9 @@ const createRecordingToolbar = (): void => {
   const { width, height } = primaryDisplay.workAreaSize;
 
   recordingToolbar = new BrowserWindow({
-    width: 300,
+    width: 380,
     height: 60,
-    x: Math.floor((width - 300) / 2),
+    x: Math.floor((width - 380) / 2),
     y: height - 100,
     frame: false,
     transparent: true,
@@ -190,8 +236,74 @@ const createRecordingToolbar = (): void => {
   }
 };
 
+const createEditorWindow = (): void => {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width, height } = primaryDisplay.workAreaSize;
+
+  if (editorWindow) {
+    editorWindow.focus();
+    return;
+  }
+
+  editorWindow = new BrowserWindow({
+    width: Math.floor(width * 0.9),
+    height: Math.floor(height * 0.9),
+    minWidth: 1200,
+    minHeight: 700,
+    frame: true,
+    backgroundColor: '#0a0a0a',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    editorWindow.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}#editor`);
+  } else {
+    editorWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`), {
+      hash: 'editor',
+    });
+  }
+
+  // Open DevTools in development
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    editorWindow.webContents.openDevTools({ mode: 'detach' });
+  }
+
+  editorWindow.on('closed', () => {
+    editorWindow = null;
+    pendingRecordingData = null;
+  });
+};
+
+// Register custom protocol before app is ready
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'media-file',
+    privileges: {
+      bypassCSP: true,
+      supportFetchAPI: true,
+      stream: true,
+      corsEnabled: true,
+    },
+  },
+]);
+
 // App lifecycle
 app.on('ready', () => {
+  // Register custom protocol for local file access
+  protocol.registerFileProtocol('media-file', (request, callback) => {
+    const url = request.url.replace('media-file://', '');
+    try {
+      return callback(decodeURIComponent(url));
+    } catch (error) {
+      console.error('Failed to load media file:', error);
+      return callback({ statusCode: 404 });
+    }
+  });
+
   createControlBar();
 });
 
@@ -328,3 +440,333 @@ ipcMain.handle('check-ffmpeg', async () => {
     });
   });
 });
+
+// Editor IPC Handlers
+ipcMain.on('open-editor', (_event, videoData?: Uint8Array) => {
+  if (videoData) {
+    pendingRecordingData = videoData;
+  }
+
+  if (recordingToolbar) {
+    recordingToolbar.close();
+    recordingToolbar = null;
+  }
+
+  if (controlBar) {
+    controlBar.hide();
+  }
+
+  createEditorWindow();
+});
+
+ipcMain.handle('get-pending-recording', async () => {
+  if (!pendingRecordingData) {
+    return null;
+  }
+
+  try {
+    // Save to a temporary file
+    const tempDir = app.getPath('temp');
+    const timestamp = Date.now();
+    const tempWebmPath = path.join(tempDir, `clip-forge-recording-${timestamp}.webm`);
+    const tempMp4Path = path.join(tempDir, `clip-forge-recording-${timestamp}.mp4`);
+
+    console.log('Saving recording to:', tempWebmPath);
+    await fs.writeFile(tempWebmPath, pendingRecordingData);
+
+    // Verify file was written
+    const webmStats = await fs.stat(tempWebmPath);
+    console.log('WebM file created, size:', webmStats.size, 'bytes');
+
+    if (webmStats.size === 0) {
+      throw new Error('Recorded file is empty');
+    }
+
+    // Convert webm to mp4 for better compatibility
+    console.log('Starting FFmpeg conversion...');
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg(tempWebmPath)
+        .outputOptions([
+          '-c:v libx264',  // H.264 codec
+          '-preset ultrafast',   // Fast encoding for temp conversion
+          '-crf 18',        // High quality
+          '-c:a aac',       // AAC audio codec
+          '-movflags +faststart', // Enable streaming
+          '-pix_fmt yuv420p', // Ensure compatibility
+        ])
+        .output(tempMp4Path)
+        .on('start', (commandLine) => {
+          console.log('FFmpeg command:', commandLine);
+        })
+        .on('progress', (progress) => {
+          console.log('FFmpeg progress:', progress.percent, '%');
+        })
+        .on('end', async () => {
+          console.log('FFmpeg conversion complete');
+          // Delete the original webm file after conversion completes
+          try {
+            await fs.unlink(tempWebmPath);
+            console.log('Deleted temp WebM file');
+          } catch (err) {
+            console.warn('Failed to delete temp webm:', err);
+          }
+          resolve();
+        })
+        .on('error', (error, stdout, stderr) => {
+          console.error('FFmpeg conversion error:', error);
+          console.error('FFmpeg stdout:', stdout);
+          console.error('FFmpeg stderr:', stderr);
+          reject(error);
+        })
+        .run();
+    });
+
+    // Verify MP4 was created
+    const mp4Stats = await fs.stat(tempMp4Path);
+    console.log('MP4 file created, size:', mp4Stats.size, 'bytes');
+
+    // Get metadata from the mp4 file
+    const metadata = await getMediaMetadata(tempMp4Path);
+    console.log('Video metadata:', metadata);
+
+    // Clear pending data
+    pendingRecordingData = null;
+
+    return {
+      filePath: tempMp4Path,
+      name: `Recording ${new Date().toLocaleString()}`,
+      type: metadata.type,
+      duration: metadata.duration || 0,
+      width: metadata.width,
+      height: metadata.height,
+      fileSize: mp4Stats.size,
+    };
+  } catch (error) {
+    console.error('Error processing pending recording:', error);
+    pendingRecordingData = null;
+    return null;
+  }
+});
+
+ipcMain.handle('import-media-files', async () => {
+  const { filePaths, canceled } = await dialog.showOpenDialog({
+    title: 'Import Media',
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: 'Media Files', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm', 'mp3', 'wav', 'aac', 'jpg', 'jpeg', 'png', 'gif'] },
+      { name: 'Video', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm'] },
+      { name: 'Audio', extensions: ['mp3', 'wav', 'aac', 'ogg', 'm4a'] },
+      { name: 'Image', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'] },
+    ],
+  });
+
+  if (canceled || !filePaths.length) {
+    return { success: false, canceled: true };
+  }
+
+  try {
+    const mediaFiles = await Promise.all(
+      filePaths.map(async (filePath) => {
+        const stats = await fs.stat(filePath);
+        const metadata = await getMediaMetadata(filePath);
+
+        return {
+          filePath,
+          name: path.basename(filePath),
+          type: metadata.type,
+          duration: metadata.duration,
+          width: metadata.width,
+          height: metadata.height,
+          fileSize: stats.size,
+        };
+      })
+    );
+
+    return { success: true, files: mediaFiles };
+  } catch (error) {
+    console.error('Error importing files:', error);
+    return { success: false, error: String(error) };
+  }
+});
+
+ipcMain.handle('get-video-metadata', async (_event, filePath: string) => {
+  return getMediaMetadata(filePath);
+});
+
+ipcMain.handle('generate-thumbnail', async (_event, filePath: string, timestamp: number = 0) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      console.log('Generating thumbnail for:', filePath, 'at timestamp:', timestamp);
+
+      // Verify the file exists and is accessible
+      const stats = await fs.stat(filePath);
+      console.log('File exists, size:', stats.size, 'bytes');
+
+      // Wait a moment to ensure file handle is released
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const tempPath = path.join(app.getPath('temp'), `thumb-${Date.now()}.jpg`);
+      console.log('Temp thumbnail path:', tempPath);
+
+      ffmpeg(filePath)
+        .screenshots({
+          timestamps: [timestamp],
+          filename: path.basename(tempPath),
+          folder: path.dirname(tempPath),
+          size: '150x?',
+        })
+        .on('start', (commandLine) => {
+          console.log('Thumbnail FFmpeg command:', commandLine);
+        })
+        .on('end', async () => {
+          console.log('Thumbnail generated successfully');
+          try {
+            const data = await fs.readFile(tempPath);
+            console.log('Thumbnail file read, size:', data.length, 'bytes');
+            // Clean up temp file
+            try {
+              await fs.unlink(tempPath);
+              console.log('Temp thumbnail deleted');
+            } catch (unlinkError) {
+              console.warn('Failed to delete temp thumbnail:', unlinkError);
+            }
+            resolve(`data:image/jpeg;base64,${data.toString('base64')}`);
+          } catch (error) {
+            console.error('Failed to read thumbnail file:', error);
+            reject(error);
+          }
+        })
+        .on('error', (error, stdout, stderr) => {
+          console.error('Thumbnail generation error:', error);
+          console.error('FFmpeg stdout:', stdout);
+          console.error('FFmpeg stderr:', stderr);
+          reject(error);
+        });
+    } catch (error) {
+      console.error('Thumbnail generation failed before FFmpeg:', error);
+      reject(error);
+    }
+  });
+});
+
+ipcMain.handle('export-video', async (_event, options: {
+  outputPath: string;
+  clips: Array<{ filePath: string; startTime: number; duration: number; trimStart: number; trimEnd: number }>;
+  resolution?: { width: number; height: number };
+  format?: string;
+  quality?: 'low' | 'medium' | 'high' | 'ultra';
+}) => {
+  return new Promise((resolve) => {
+    const { outputPath, clips, resolution, quality = 'high' } = options;
+
+    // Quality settings
+    const qualitySettings = {
+      low: { crf: 28, preset: 'fast' },
+      medium: { crf: 23, preset: 'medium' },
+      high: { crf: 18, preset: 'slow' },
+      ultra: { crf: 15, preset: 'veryslow' },
+    };
+
+    const { crf, preset } = qualitySettings[quality];
+
+    // For now, handle single clip export
+    // TODO: Implement complex timeline with multiple clips and transitions
+    if (clips.length === 1) {
+      const clip = clips[0];
+      const command = ffmpeg(clip.filePath)
+        .setStartTime(clip.trimStart)
+        .setDuration(clip.duration)
+        .videoCodec('libx264')
+        .outputOptions([
+          `-crf ${crf}`,
+          `-preset ${preset}`,
+          '-movflags +faststart',
+        ]);
+
+      if (resolution) {
+        command.size(`${resolution.width}x${resolution.height}`);
+      }
+
+      command
+        .on('start', (commandLine) => {
+          console.log('FFmpeg command:', commandLine);
+        })
+        .on('progress', (progress) => {
+          if (editorWindow) {
+            editorWindow.webContents.send('export-progress', progress.percent || 0);
+          }
+        })
+        .on('end', () => {
+          resolve({ success: true, outputPath });
+        })
+        .on('error', (error) => {
+          console.error('Export error:', error);
+          resolve({ success: false, error: String(error) });
+        })
+        .save(outputPath);
+    } else {
+      // TODO: Implement complex multi-clip timeline export
+      resolve({ success: false, error: 'Multi-clip export not yet implemented' });
+    }
+  });
+});
+
+ipcMain.handle('show-save-dialog', async (_event, options: {
+  title?: string;
+  defaultPath?: string;
+  filters?: Array<{ name: string; extensions: string[] }>;
+}) => {
+  const result = await dialog.showSaveDialog({
+    title: options.title || 'Save File',
+    defaultPath: options.defaultPath || `export-${Date.now()}.mp4`,
+    filters: options.filters || [{ name: 'Video', extensions: ['mp4'] }],
+  });
+
+  return result;
+});
+
+// Helper function to get media metadata
+function getMediaMetadata(filePath: string): Promise<{
+  type: 'video' | 'audio' | 'image';
+  duration: number;
+  width?: number;
+  height?: number;
+}> {
+  return new Promise((resolve, reject) => {
+    const ext = path.extname(filePath).toLowerCase();
+
+    // Determine type by extension
+    const videoExts = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
+    const audioExts = ['.mp3', '.wav', '.aac', '.ogg', '.m4a'];
+    const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+
+    let type: 'video' | 'audio' | 'image';
+    if (videoExts.includes(ext)) type = 'video';
+    else if (audioExts.includes(ext)) type = 'audio';
+    else if (imageExts.includes(ext)) type = 'image';
+    else type = 'video'; // default
+
+    if (type === 'image') {
+      // Images don't have duration, return static metadata
+      resolve({ type, duration: 5, width: 0, height: 0 });
+      return;
+    }
+
+    ffmpeg.ffprobe(filePath, (error, metadata) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      const videoStream = metadata.streams.find((s) => s.codec_type === 'video');
+      const duration = metadata.format.duration || 0;
+
+      resolve({
+        type,
+        duration,
+        width: videoStream?.width,
+        height: videoStream?.height,
+      });
+    });
+  });
+}

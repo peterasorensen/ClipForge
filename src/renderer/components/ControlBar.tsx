@@ -31,9 +31,8 @@ const BarContainer = styled.div`
   backdrop-filter: blur(20px);
   border: 1px solid ${({ theme }) => theme.colors.border.primary};
   border-radius: ${({ theme }) => theme.borderRadius.full};
-  box-shadow: ${({ theme }) => theme.shadows.lg};
   animation: fadeIn 0.3s ease-out;
-  -webkit-app-region: no-drag;
+  -webkit-app-region: drag;
 `;
 
 const Divider = styled.div`
@@ -41,6 +40,7 @@ const Divider = styled.div`
   height: 24px;
   background: ${({ theme }) => theme.colors.border.primary};
   margin: 0 4px;
+  -webkit-app-region: drag;
 `;
 
 const Button = styled.button<{ $active?: boolean }>`
@@ -59,6 +59,7 @@ const Button = styled.button<{ $active?: boolean }>`
   transition: all ${({ theme }) => theme.transitions.fast};
   position: relative;
   overflow: hidden;
+  -webkit-app-region: no-drag;
 
   &:hover {
     background: ${({ $active, theme }) =>
@@ -101,6 +102,7 @@ const IconButton = styled.button<{ $active?: boolean }>`
   border-radius: ${({ theme }) => theme.borderRadius.md};
   transition: all ${({ theme }) => theme.transitions.fast};
   position: relative;
+  -webkit-app-region: no-drag;
 
   &:hover {
     background: ${({ $active, theme }) =>
@@ -122,6 +124,7 @@ const IconWrapper = styled.span`
   display: flex;
   align-items: center;
   justify-content: center;
+  -webkit-app-region: no-drag;
 `;
 
 const ControlBar: React.FC = () => {

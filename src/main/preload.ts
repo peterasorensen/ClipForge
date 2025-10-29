@@ -79,6 +79,50 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getRecordingConfig: (): Promise<{ selectedSourceId?: string | null; selectedArea?: { x: number; y: number; width: number; height: number } | null } | null> =>
     ipcRenderer.invoke('get-recording-config'),
+
+  // Editor APIs
+  openEditor: (videoData?: Uint8Array): void =>
+    ipcRenderer.send('open-editor', videoData),
+
+  getPendingRecording: (): Promise<{
+    filePath: string;
+    name: string;
+    type: string;
+    duration: number;
+    width?: number;
+    height?: number;
+    fileSize: number;
+  } | null> =>
+    ipcRenderer.invoke('get-pending-recording'),
+
+  importMediaFiles: (): Promise<{ success: boolean; files?: Array<{ filePath: string; name: string; type: string; duration: number; width?: number; height?: number; fileSize: number }>; canceled?: boolean; error?: string }> =>
+    ipcRenderer.invoke('import-media-files'),
+
+  getVideoMetadata: (filePath: string): Promise<{ type: 'video' | 'audio' | 'image'; duration: number; width?: number; height?: number }> =>
+    ipcRenderer.invoke('get-video-metadata', filePath),
+
+  generateThumbnail: (filePath: string, timestamp?: number): Promise<string> =>
+    ipcRenderer.invoke('generate-thumbnail', filePath, timestamp),
+
+  exportVideo: (options: {
+    outputPath: string;
+    clips: Array<{ filePath: string; startTime: number; duration: number; trimStart: number; trimEnd: number }>;
+    resolution?: { width: number; height: number };
+    format?: string;
+    quality?: 'low' | 'medium' | 'high' | 'ultra';
+  }): Promise<{ success: boolean; outputPath?: string; error?: string }> =>
+    ipcRenderer.invoke('export-video', options),
+
+  showSaveDialog: (options: {
+    title?: string;
+    defaultPath?: string;
+    filters?: Array<{ name: string; extensions: string[] }>;
+  }): Promise<{ filePath?: string; canceled: boolean }> =>
+    ipcRenderer.invoke('show-save-dialog', options),
+
+  onExportProgress: (callback: (progress: number) => void): void => {
+    ipcRenderer.on('export-progress', (_event, progress) => callback(progress));
+  },
 });
 
 declare global {
@@ -94,6 +138,32 @@ declare global {
       saveRecording: (videoData: Buffer) => Promise<{ success: boolean; filePath?: string; canceled?: boolean; error?: string }>;
       checkFFmpeg: () => Promise<boolean>;
       getRecordingConfig: () => Promise<{ selectedSourceId?: string | null; selectedArea?: { x: number; y: number; width: number; height: number } | null } | null>;
+      openEditor: (videoData?: Uint8Array) => void;
+      getPendingRecording: () => Promise<{
+        filePath: string;
+        name: string;
+        type: string;
+        duration: number;
+        width?: number;
+        height?: number;
+        fileSize: number;
+      } | null>;
+      importMediaFiles: () => Promise<{ success: boolean; files?: Array<{ filePath: string; name: string; type: string; duration: number; width?: number; height?: number; fileSize: number }>; canceled?: boolean; error?: string }>;
+      getVideoMetadata: (filePath: string) => Promise<{ type: 'video' | 'audio' | 'image'; duration: number; width?: number; height?: number }>;
+      generateThumbnail: (filePath: string, timestamp?: number) => Promise<string>;
+      exportVideo: (options: {
+        outputPath: string;
+        clips: Array<{ filePath: string; startTime: number; duration: number; trimStart: number; trimEnd: number }>;
+        resolution?: { width: number; height: number };
+        format?: string;
+        quality?: 'low' | 'medium' | 'high' | 'ultra';
+      }) => Promise<{ success: boolean; outputPath?: string; error?: string }>;
+      showSaveDialog: (options: {
+        title?: string;
+        defaultPath?: string;
+        filters?: Array<{ name: string; extensions: string[] }>;
+      }) => Promise<{ filePath?: string; canceled: boolean }>;
+      onExportProgress: (callback: (progress: number) => void) => void;
     };
   }
 }

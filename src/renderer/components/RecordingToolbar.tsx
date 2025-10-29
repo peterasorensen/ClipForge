@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import styled from 'styled-components';
 import { useRecordingStore } from '../store';
 import { useRecording } from '../hooks/useRecording';
-import { PlayIcon, PauseIcon, RestartIcon, StopIcon } from './Icons';
+import { PlayIcon, PauseIcon, RestartIcon, StopIcon, TrashIcon } from './Icons';
 
 const Container = styled.div`
   width: 100%;
@@ -10,6 +10,7 @@ const Container = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
+  -webkit-app-region: drag;
 `;
 
 const ToolbarContainer = styled.div`
@@ -21,14 +22,15 @@ const ToolbarContainer = styled.div`
   backdrop-filter: blur(20px);
   border: 1px solid ${({ theme }) => theme.colors.border.primary};
   border-radius: ${({ theme }) => theme.borderRadius.full};
-  box-shadow: ${({ theme }) => theme.shadows.lg};
   animation: fadeIn 0.3s ease-out;
+  -webkit-app-region: drag;
 `;
 
 const RecordingIndicator = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
+  -webkit-app-region: drag;
 `;
 
 const RecDot = styled.div`
@@ -38,6 +40,7 @@ const RecDot = styled.div`
   border-radius: 50%;
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   box-shadow: 0 0 10px ${({ theme }) => theme.colors.status.recording};
+  -webkit-app-region: drag;
 `;
 
 const Timer = styled.span`
@@ -46,12 +49,14 @@ const Timer = styled.span`
   color: ${({ theme }) => theme.colors.text.primary};
   font-variant-numeric: tabular-nums;
   min-width: 60px;
+  -webkit-app-region: drag;
 `;
 
 const Divider = styled.div`
   width: 1px;
   height: 28px;
   background: ${({ theme }) => theme.colors.border.primary};
+  -webkit-app-region: drag;
 `;
 
 const ToolbarButton = styled.button<{ $variant?: 'danger' }>`
@@ -69,6 +74,7 @@ const ToolbarButton = styled.button<{ $variant?: 'danger' }>`
   cursor: pointer;
   transition: all ${({ theme }) => theme.transitions.fast};
   white-space: nowrap;
+  -webkit-app-region: no-drag;
 
   &:hover {
     background: ${({ $variant, theme }) =>
@@ -100,6 +106,7 @@ const IconButton = styled.button`
   cursor: pointer;
   transition: all ${({ theme }) => theme.transitions.fast};
   font-size: 18px;
+  -webkit-app-region: no-drag;
 
   &:hover {
     background: ${({ theme }) => theme.colors.background.tertiary};
@@ -123,7 +130,6 @@ const RecordingToolbar: React.FC = () => {
     setIsPaused,
     setRecordingTime,
     mediaRecorder,
-    recordedChunks,
     reset,
     setSelectedSourceId,
     setSelectedArea,
@@ -215,28 +221,45 @@ const RecordingToolbar: React.FC = () => {
     }, 100);
   };
 
+  const handleCancel = () => {
+    // Stop recording without saving
+    stopRecording();
+    reset();
+    // Go back to control bar
+    window.electronAPI.stopRecording();
+  };
+
   const handleFinish = async () => {
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       // Set up the stop handler before stopping
       const stopHandler = async () => {
         // Give it a moment for final chunks to arrive
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200));
 
-        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        // Get the current chunks from the store at the time of stopping
+        const currentChunks = useRecordingStore.getState().recordedChunks;
+
+        console.log('Recorded chunks count:', currentChunks.length);
+        console.log('Total size:', currentChunks.reduce((acc, chunk) => acc + chunk.size, 0), 'bytes');
+
+        if (currentChunks.length === 0) {
+          console.error('No recorded chunks available!');
+          alert('Recording failed: No data captured');
+          reset();
+          return;
+        }
+
+        const blob = new Blob(currentChunks, { type: 'video/webm' });
+        console.log('Blob size:', blob.size, 'bytes');
+
         const arrayBuffer = await blob.arrayBuffer();
         const uint8Array = new Uint8Array(arrayBuffer);
 
-        // Save the recording
-        const result = await window.electronAPI.saveRecording(uint8Array);
+        // Open editor with the recording data
+        window.electronAPI.openEditor(uint8Array);
 
-        if (result.success && !result.canceled) {
-          console.log('Recording saved:', result.filePath);
-          alert(`Recording saved to: ${result.filePath}`);
-        }
-
-        // Reset state and close toolbar
+        // Reset state
         reset();
-        window.electronAPI.stopRecording();
       };
 
       mediaRecorder.onstop = stopHandler;
@@ -250,6 +273,12 @@ const RecordingToolbar: React.FC = () => {
   return (
     <Container>
       <ToolbarContainer>
+        <IconButton onClick={handleCancel} title="Cancel recording">
+          <TrashIcon size={18} />
+        </IconButton>
+
+        <Divider />
+
         <RecordingIndicator>
           <RecDot />
           <Timer>{formatTime(recordingTime)}</Timer>
