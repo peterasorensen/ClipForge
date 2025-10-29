@@ -109,7 +109,6 @@ const LeftPanel = styled.aside`
   background: ${({ theme }) => theme.colors.background.secondary};
   border-right: 1px solid ${({ theme }) => theme.colors.border.primary};
   overflow-y: auto;
-  position: relative;
 
   &::-webkit-scrollbar {
     width: 6px;
@@ -129,15 +128,15 @@ const LeftPanel = styled.aside`
   }
 `;
 
-const TogglePanelButton = styled.button<{ $collapsed: boolean }>`
+const CollapseButton = styled.button`
   position: absolute;
   top: 16px;
-  right: 16px;
-  width: 28px;
-  height: 28px;
-  background: ${({ theme }) => theme.colors.background.tertiary};
+  right: -23px;
+  width: 24px;
+  height: 48px;
+  background: ${({ theme }) => theme.colors.background.secondary};
   border: 1px solid ${({ theme }) => theme.colors.border.primary};
-  border-radius: ${({ theme }) => theme.borderRadius.sm};
+  border-radius: 0 ${({ theme }) => theme.borderRadius.sm} ${({ theme }) => theme.borderRadius.sm} 0;
   color: ${({ theme }) => theme.colors.text.secondary};
   cursor: pointer;
   display: flex;
@@ -145,28 +144,26 @@ const TogglePanelButton = styled.button<{ $collapsed: boolean }>`
   justify-content: center;
   z-index: 30;
   transition: all ${({ theme }) => theme.transitions.fast};
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
 
   &:hover {
-    background: ${({ theme }) => theme.colors.background.glass};
+    background: ${({ theme }) => theme.colors.background.tertiary};
     border-color: ${({ theme }) => theme.colors.accent.primary};
     color: ${({ theme }) => theme.colors.text.primary};
-    transform: scale(1.1);
+    right: -24px;
   }
 
   svg {
-    width: 16px;
-    height: 16px;
-    transition: transform ${({ theme }) => theme.transitions.fast};
-    transform: ${({ $collapsed }) => ($collapsed ? 'rotate(0deg)' : 'rotate(180deg)')};
+    width: 14px;
+    height: 14px;
   }
 `;
 
 const ExpandButton = styled.button`
-  position: absolute;
-  top: 16px;
+  position: fixed;
+  top: 80px;
   left: 12px;
-  width: 32px;
-  height: 32px;
+  padding: 8px 12px;
   background: ${({ theme }) => theme.colors.background.secondary};
   border: 1px solid ${({ theme }) => theme.colors.border.primary};
   border-radius: ${({ theme }) => theme.borderRadius.sm};
@@ -174,22 +171,24 @@ const ExpandButton = styled.button`
   cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
   z-index: 30;
   transition: all ${({ theme }) => theme.transitions.fast};
   box-shadow: ${({ theme }) => theme.shadows.md};
+  font-size: 13px;
+  font-weight: 500;
 
   &:hover {
     background: ${({ theme }) => theme.colors.background.tertiary};
     border-color: ${({ theme }) => theme.colors.accent.primary};
     color: ${({ theme }) => theme.colors.text.primary};
-    transform: scale(1.1);
+    transform: translateX(2px);
     box-shadow: ${({ theme }) => theme.shadows.lg};
   }
 
   svg {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
   }
 `;
 
@@ -432,21 +431,23 @@ const VideoEditor: React.FC = () => {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="9 18 15 12 9 6" />
             </svg>
+            <span>Media</span>
           </ExpandButton>
         )}
         <LeftPanelWrapper $collapsed={isLibraryCollapsed}>
           <LeftPanel>
             <MediaLibrary />
-            <TogglePanelButton
-              $collapsed={isLibraryCollapsed}
+          </LeftPanel>
+          {!isLibraryCollapsed && (
+            <CollapseButton
               onClick={() => setIsLibraryCollapsed(true)}
               title="Hide Media Library"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="15 18 9 12 15 6" />
               </svg>
-            </TogglePanelButton>
-          </LeftPanel>
+            </CollapseButton>
+          )}
         </LeftPanelWrapper>
 
         <CenterContent>
