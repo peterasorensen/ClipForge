@@ -120,12 +120,12 @@ const DeleteButton = styled.button`
   }
 `;
 
-const MediaThumbnail = styled.div<{ thumbnail?: string }>`
+const MediaThumbnail = styled.div<{ $thumbnail?: string }>`
   width: 100%;
   aspect-ratio: 16 / 9;
-  background: ${({ thumbnail, theme }) =>
-    thumbnail
-      ? `url(${thumbnail}) center/cover no-repeat`
+  background: ${({ $thumbnail, theme }) =>
+    $thumbnail
+      ? `url(${$thumbnail}) center/cover no-repeat`
       : theme.colors.background.primary};
   border-radius: ${({ theme }) => theme.borderRadius.sm};
   margin-bottom: 4px;
@@ -430,7 +430,7 @@ const MediaLibrary: React.FC = () => {
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </DeleteButton>
-              <MediaThumbnail thumbnail={item.thumbnail}>
+              <MediaThumbnail $thumbnail={item.thumbnail}>
                 {!item.thumbnail && <TypeBadge type={item.type}>{item.type}</TypeBadge>}
               </MediaThumbnail>
               <MediaInfo>

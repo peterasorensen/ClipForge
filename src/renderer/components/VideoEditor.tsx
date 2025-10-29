@@ -409,9 +409,6 @@ const VideoEditor: React.FC = () => {
       <Header>
         <Title>Clip Forge Editor</Title>
         <HeaderActions>
-          <Button onClick={() => window.electronAPI.importMediaFiles()}>
-            Import Media
-          </Button>
           <Button
             $variant="primary"
             onClick={() => setShowExportPanel(true)}

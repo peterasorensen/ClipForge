@@ -180,7 +180,6 @@ const VideoPlayer: React.FC = () => {
     mediaItems,
     setCurrentTime,
     setIsPlaying,
-    setDuration,
   } = useEditorStore();
 
   // Get the current clip being played
@@ -244,7 +243,6 @@ const VideoPlayer: React.FC = () => {
     };
 
     const handleLoadedMetadata = () => {
-      setDuration(video.duration);
       setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
     };
 
@@ -264,7 +262,7 @@ const VideoPlayer: React.FC = () => {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('ended', handleEnded);
     };
-  }, [videoSrc, currentTime, setCurrentTime, setDuration, setIsPlaying]);
+  }, [videoSrc, currentTime, setCurrentTime, setIsPlaying]);
 
   const handleVideoClick = () => {
     setIsPlaying(!isPlaying);

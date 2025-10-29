@@ -128,9 +128,12 @@ const Ruler = styled.div<{ $zoom: number }>`
   width: ${({ $zoom }) => $zoom * 100}px; /* 100 seconds visible */
 `;
 
-const RulerMark = styled.div<{ $position: number }>`
+const RulerMark = styled.div.attrs<{ $position: number }>(({ $position }) => ({
+  style: {
+    left: `${$position}px`,
+  }
+}))<{ $position: number }>`
   position: absolute;
-  left: ${({ $position }) => $position}px;
   top: 0;
   height: 100%;
   display: flex;
@@ -161,31 +164,36 @@ const TrackRow = styled.div<{ $isDragOver?: boolean }>`
   transition: background ${({ theme }) => theme.transitions.fast};
 `;
 
-const ClipElement = styled.div<{
+const ClipElement = styled.div.attrs<{
+  $startTime: number;
+  $duration: number;
+  $zoom: number;
+  $selected: boolean;
+}>(({ $startTime, $duration, $zoom, $selected }) => ({
+  style: {
+    left: `${$startTime * $zoom}px`,
+    width: `${$duration * $zoom}px`,
+    background: $selected ? '#e68a4d' : '#d97f43',
+    borderColor: $selected ? '#f0a060' : '#d97f43',
+  }
+}))<{
   $startTime: number;
   $duration: number;
   $zoom: number;
   $selected: boolean;
 }>`
   position: absolute;
-  left: ${({ $startTime, $zoom }) => $startTime * $zoom}px;
-  width: ${({ $duration, $zoom }) => $duration * $zoom}px;
   height: 48px;
   top: 6px;
-  background: ${({ $selected }) =>
-    $selected ? '#e68a4d' : '#d97f43'};
-  border: 2px solid
-    ${({ $selected }) =>
-      $selected ? '#f0a060' : '#d97f43'};
+  border: 2px solid;
   border-radius: 12px;
   cursor: move;
   overflow: hidden;
-  transition: all ${({ theme }) => theme.transitions.fast};
   box-shadow: ${({ theme }) => theme.shadows.md};
 
   &:hover {
-    border-color: #f0a060;
-    background: #e68a4d;
+    border-color: #f0a060 !important;
+    background: #e68a4d !important;
   }
 `;
 
@@ -232,9 +240,12 @@ const ResizeHandle = styled.div<{ $position: 'left' | 'right' }>`
   }
 `;
 
-const Playhead = styled.div<{ $position: number; $zoom: number }>`
+const Playhead = styled.div.attrs<{ $position: number; $zoom: number }>(({ $position, $zoom }) => ({
+  style: {
+    left: `${$position * $zoom}px`,
+  }
+}))<{ $position: number; $zoom: number }>`
   position: absolute;
-  left: ${({ $position, $zoom }) => $position * $zoom}px;
   top: 0;
   bottom: 0;
   width: 2px;
@@ -366,34 +377,47 @@ const AdditionalTimelineTrack = styled.div`
   position: relative;
 `;
 
-const ZoomSegment = styled.div<{
+const ZoomSegment = styled.div.attrs<{
+  $startTime: number;
+  $duration: number;
+  $zoom: number;
+}>(({ $startTime, $duration, $zoom }) => ({
+  style: {
+    left: `${$startTime * $zoom}px`,
+    width: `${$duration * $zoom}px`,
+  }
+}))<{
   $startTime: number;
   $duration: number;
   $zoom: number;
 }>`
   position: absolute;
-  left: ${({ $startTime, $zoom }) => $startTime * $zoom}px;
-  width: ${({ $duration, $zoom }) => $duration * $zoom}px;
   height: 24px;
   top: 8px;
   background: #6b7dff;
   border-radius: 8px;
   cursor: pointer;
-  transition: all ${({ theme }) => theme.transitions.fast};
 
   &:hover {
     background: #7a8cff;
   }
 `;
 
-const LayoutSegment = styled.div<{
+const LayoutSegment = styled.div.attrs<{
+  $startTime: number;
+  $duration: number;
+  $zoom: number;
+}>(({ $startTime, $duration, $zoom }) => ({
+  style: {
+    left: `${$startTime * $zoom}px`,
+    width: `${$duration * $zoom}px`,
+  }
+}))<{
   $startTime: number;
   $duration: number;
   $zoom: number;
 }>`
   position: absolute;
-  left: ${({ $startTime, $zoom }) => $startTime * $zoom}px;
-  width: ${({ $duration, $zoom }) => $duration * $zoom}px;
   height: 24px;
   top: 8px;
   background: ${({ theme }) => theme.colors.background.glass};
@@ -405,7 +429,6 @@ const LayoutSegment = styled.div<{
   justify-content: center;
   font-size: 11px;
   color: ${({ theme }) => theme.colors.text.secondary};
-  transition: all ${({ theme }) => theme.transitions.fast};
 
   &:hover {
     border-color: ${({ theme }) => theme.colors.accent.primary};
@@ -416,14 +439,20 @@ type TimelineType = 'zooms' | 'layouts';
 
 const Timeline: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [isResizing, setIsResizing] = useState<'left' | 'right' | null>(null);
-  const [dragClipId, setDragClipId] = useState<string | null>(null);
-  const [dragStartX, setDragStartX] = useState(0);
-  const [dragStartTime, setDragStartTime] = useState(0);
   const [dragOverTrackId, setDragOverTrackId] = useState<string | null>(null);
   const [visibleTimelines, setVisibleTimelines] = useState<TimelineType[]>(['zooms', 'layouts']);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  // Use refs for drag state to avoid re-renders during drag
+  const dragStateRef = useRef({
+    isDragging: false,
+    isResizing: null as 'left' | 'right' | null,
+    clipId: null as string | null,
+    startX: 0,
+    startTime: 0,
+    startDuration: 0,
+    startTrimStart: 0,
+  });
 
   const {
     tracks,
@@ -475,87 +504,76 @@ const Timeline: React.FC = () => {
     resizeHandle?: 'left' | 'right'
   ) => {
     e.stopPropagation();
+    e.preventDefault();
 
-    if (resizeHandle) {
-      setIsResizing(resizeHandle);
-    } else {
-      setIsDragging(true);
-    }
+    // Store initial state in ref
+    const dragState = dragStateRef.current;
+    dragState.isDragging = !resizeHandle;
+    dragState.isResizing = resizeHandle || null;
+    dragState.clipId = clipId;
+    dragState.startX = e.clientX;
+    dragState.startTime = clip.startTime;
+    dragState.startDuration = clip.duration;
+    dragState.startTrimStart = clip.trimStart;
 
-    setDragClipId(clipId);
-    setDragStartX(e.clientX);
-    setDragStartTime(clip.startTime);
     setSelectedClips([clipId]);
-  };
 
-  useEffect(() => {
-    if (!isDragging && !isResizing) return;
+    let rafId: number | null = null;
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!dragClipId) return;
+      e.preventDefault();
 
-      const deltaX = e.clientX - dragStartX;
-      const deltaTime = deltaX / zoom;
-
-      // Find the clip
-      let clip: TimelineClip | null = null;
-      for (const track of tracks) {
-        const found = track.clips.find((c: TimelineClip) => c.id === dragClipId);
-        if (found) {
-          clip = found;
-          break;
-        }
+      // Cancel previous frame if pending
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
       }
 
-      if (!clip) return;
+      // Schedule update on next frame
+      rafId = requestAnimationFrame(() => {
+        const deltaX = e.clientX - dragState.startX;
+        const deltaTime = deltaX / zoom;
 
-      if (isDragging) {
-        // Move clip
-        const newStartTime = Math.max(0, dragStartTime + deltaTime);
-        updateClip(dragClipId, { startTime: newStartTime });
-      } else if (isResizing === 'left') {
-        // Resize from left
-        const newStartTime = Math.max(0, dragStartTime + deltaTime);
-        const deltaStart = newStartTime - clip.startTime;
-        const newDuration = clip.duration - deltaStart;
+        if (dragState.isDragging && dragState.clipId) {
+          // Move clip
+          const newStartTime = Math.max(0, dragState.startTime + deltaTime);
+          updateClip(dragState.clipId, { startTime: newStartTime });
+        } else if (dragState.isResizing === 'left' && dragState.clipId) {
+          // Resize from left
+          const newStartTime = Math.max(0, dragState.startTime + deltaTime);
+          const newDuration = Math.max(0.1, dragState.startDuration - deltaTime);
+          const newTrimStart = dragState.startTrimStart + deltaTime;
 
-        if (newDuration > 0.1) {
-          updateClip(dragClipId, {
+          updateClip(dragState.clipId, {
             startTime: newStartTime,
             duration: newDuration,
-            trimStart: clip.trimStart + deltaStart,
+            trimStart: newTrimStart,
           });
+        } else if (dragState.isResizing === 'right' && dragState.clipId) {
+          // Resize from right
+          const newDuration = Math.max(0.1, dragState.startDuration + deltaTime);
+          updateClip(dragState.clipId, { duration: newDuration });
         }
-      } else if (isResizing === 'right') {
-        // Resize from right
-        const newDuration = Math.max(0.1, clip.duration + deltaTime);
-        updateClip(dragClipId, { duration: newDuration });
-      }
+        rafId = null;
+      });
     };
 
     const handleMouseUp = () => {
-      setIsDragging(false);
-      setIsResizing(null);
-      setDragClipId(null);
+      // Cleanup
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+
+      // Reset state
+      dragState.isDragging = false;
+      dragState.isResizing = null;
+      dragState.clipId = null;
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [
-    isDragging,
-    isResizing,
-    dragClipId,
-    dragStartX,
-    dragStartTime,
-    zoom,
-    tracks,
-    updateClip,
-  ]);
+  };
 
   const handleTimelineClick = (e: React.MouseEvent) => {
     if (!containerRef.current) return;
