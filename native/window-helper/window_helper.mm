@@ -7,6 +7,10 @@ Napi::Array GetOnScreenWindows(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Array result = Napi::Array::New(env);
 
+    // Get menu bar height dynamically (handles notch displays)
+    NSScreen *mainScreen = [NSScreen mainScreen];
+    CGFloat menuBarHeight = mainScreen.frame.size.height - NSMaxY(mainScreen.visibleFrame);
+
     // Get window list - on-screen only, exclude desktop elements
     CFArrayRef windowList = CGWindowListCopyWindowInfo(
         kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
@@ -100,10 +104,11 @@ Napi::Array GetOnScreenWindows(const Napi::CallbackInfo& info) {
         windowObj.Set("name", Napi::String::New(env, name));
         windowObj.Set("pid", Napi::Number::New(env, pid));
 
-        // Add bounds
+        // CGWindowBounds returns coordinates from top of screen
+        // Subtract menu bar height to get coordinates relative to visible screen area
         Napi::Object boundsObj = Napi::Object::New(env);
         boundsObj.Set("x", Napi::Number::New(env, bounds.origin.x));
-        boundsObj.Set("y", Napi::Number::New(env, bounds.origin.y));
+        boundsObj.Set("y", Napi::Number::New(env, bounds.origin.y - menuBarHeight));
         boundsObj.Set("width", Napi::Number::New(env, bounds.size.width));
         boundsObj.Set("height", Napi::Number::New(env, bounds.size.height));
         windowObj.Set("bounds", boundsObj);
@@ -124,8 +129,13 @@ Napi::Object GetWindowAtPoint(const Napi::CallbackInfo& info) {
         return Napi::Object::New(env);
     }
 
+    // Get menu bar height dynamically
+    NSScreen *mainScreen = [NSScreen mainScreen];
+    CGFloat menuBarHeight = mainScreen.frame.size.height - NSMaxY(mainScreen.visibleFrame);
+
+    // Add menu bar height to input coordinates for CGWindowBounds comparison
     double x = info[0].As<Napi::Number>().DoubleValue();
-    double y = info[1].As<Napi::Number>().DoubleValue();
+    double y = info[1].As<Napi::Number>().DoubleValue() + menuBarHeight;
     CGPoint point = CGPointMake(x, y);
 
     // Get window list - on-screen only, sorted by z-order (top to bottom)
@@ -218,9 +228,10 @@ Napi::Object GetWindowAtPoint(const Napi::CallbackInfo& info) {
             result.Set("name", Napi::String::New(env, name));
             result.Set("pid", Napi::Number::New(env, pid));
 
+            // Subtract menu bar height from y coordinate
             Napi::Object boundsObj = Napi::Object::New(env);
             boundsObj.Set("x", Napi::Number::New(env, bounds.origin.x));
-            boundsObj.Set("y", Napi::Number::New(env, bounds.origin.y));
+            boundsObj.Set("y", Napi::Number::New(env, bounds.origin.y - menuBarHeight));
             boundsObj.Set("width", Napi::Number::New(env, bounds.size.width));
             boundsObj.Set("height", Napi::Number::New(env, bounds.size.height));
             result.Set("bounds", boundsObj);

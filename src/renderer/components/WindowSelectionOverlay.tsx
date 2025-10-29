@@ -19,21 +19,18 @@ const WindowOverlay = styled.div<{
   top: ${({ $bounds }) => $bounds.y}px;
   width: ${({ $bounds }) => $bounds.width}px;
   height: ${({ $bounds }) => $bounds.height}px;
-  border: ${({ $isSelected, $isHovered, theme }) =>
-    $isSelected
-      ? `4px solid ${theme.colors.accent.primary}`
-      : $isHovered
-      ? `4px solid ${theme.colors.accent.hover}`
-      : '4px solid transparent'};
+  border: none;
+  border-radius: 12px;
   background: ${({ $isHovered, $isSelected }) =>
-    $isHovered || $isSelected ? 'rgba(124, 58, 237, 0.15)' : 'transparent'};
+    $isHovered || $isSelected ? 'rgba(124, 58, 237, 0.2)' : 'transparent'};
   cursor: pointer;
   transition: all ${({ theme }) => theme.transitions.fast};
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: ${({ $isSelected, theme }) =>
-    $isSelected ? theme.shadows.glowLg : 'none'};
+  box-shadow: ${({ $isSelected, $isHovered }) =>
+    $isSelected ? '0 0 0 3px rgba(124, 58, 237, 0.6), 0 8px 32px rgba(124, 58, 237, 0.4)' :
+    $isHovered ? '0 0 0 2px rgba(124, 58, 237, 0.4)' : 'none'};
   pointer-events: ${({ $isHovered, $isSelected }) =>
     $isHovered || $isSelected ? 'auto' : 'none'};
   z-index: ${({ $isHovered, $isSelected }) =>
