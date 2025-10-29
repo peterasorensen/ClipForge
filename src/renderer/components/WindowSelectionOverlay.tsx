@@ -133,6 +133,9 @@ interface WindowInfo {
   name: string;
   thumbnail: string;
   appIcon?: string;
+  windowNumber?: number;
+  ownerName?: string;
+  pid?: number;
   bounds?: {
     x: number;
     y: number;
@@ -156,24 +159,50 @@ const WindowSelectionOverlay: React.FC<WindowSelectionOverlayProps> = ({
   const [selectedWindow, setSelectedWindow] = useState<WindowInfo | null>(null);
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      // Find which window the mouse is over
-      const windowUnderMouse = windows.find((win) => {
-        if (!win.bounds) return false;
-        const { x, y, width, height } = win.bounds;
-        return (
-          e.clientX >= x &&
-          e.clientX <= x + width &&
-          e.clientY >= y &&
-          e.clientY <= y + height
-        );
-      });
+    let rafId: number | null = null;
+    let lastX = -1;
+    let lastY = -1;
 
-      setHoveredWindow(windowUnderMouse || null);
+    const handleMouseMove = (e: MouseEvent) => {
+      lastX = e.clientX;
+      lastY = e.clientY;
+
+      // Use requestAnimationFrame to throttle hit-testing
+      if (rafId === null) {
+        rafId = requestAnimationFrame(async () => {
+          rafId = null;
+
+          // Use native hit-testing to find the topmost window at cursor position
+          // This ensures we only highlight foreground windows, respecting z-order
+          const hitWindow = await window.electronAPI.hitTestWindow(lastX, lastY);
+
+          if (hitWindow && 'windowNumber' in hitWindow) {
+            // Find matching window in our list
+            const matchingWindow = windows.find((win) => {
+              // Match by window number or bounds
+              return (
+                ('windowNumber' in win && win.windowNumber === hitWindow.windowNumber) ||
+                (win.bounds &&
+                  Math.abs(win.bounds.x - hitWindow.bounds.x) < 1 &&
+                  Math.abs(win.bounds.y - hitWindow.bounds.y) < 1)
+              );
+            });
+
+            setHoveredWindow(matchingWindow || null);
+          } else {
+            setHoveredWindow(null);
+          }
+        });
+      }
     };
 
     window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+    };
   }, [windows]);
 
   const handleWindowClick = (window: WindowInfo) => {

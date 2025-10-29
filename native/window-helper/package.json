@@ -1,0 +1,14 @@
+{
+  "name": "window-helper",
+  "version": "1.0.0",
+  "description": "Native CoreGraphics window helper for macOS",
+  "main": "index.js",
+  "gypfile": true,
+  "scripts": {
+    "install": "node-gyp rebuild"
+  },
+  "dependencies": {
+    "node-addon-api": "^7.0.0",
+    "node-gyp": "^10.0.1"
+  }
+}

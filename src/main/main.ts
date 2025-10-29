@@ -2,6 +2,49 @@ import { app, BrowserWindow, ipcMain, desktopCapturer, screen, dialog } from 'el
 import path from 'path';
 import Store from 'electron-store';
 
+// Load native addon with proper path resolution
+// Try multiple paths to handle both dev and production builds
+interface WindowHelper {
+  getOnScreenWindows: () => Array<{
+    windowNumber: number;
+    ownerName: string;
+    name: string;
+    pid: number;
+    bounds: { x: number; y: number; width: number; height: number };
+  }>;
+  getWindowAtPoint: (x: number, y: number) => {
+    windowNumber?: number;
+    ownerName?: string;
+    name?: string;
+    pid?: number;
+    bounds?: { x: number; y: number; width: number; height: number };
+  };
+}
+
+let windowHelper: WindowHelper;
+const possiblePaths = [
+  // Development path (from project root)
+  path.join(process.cwd(), 'native', 'window-helper'),
+  // Relative to built main.js
+  path.join(__dirname, '..', '..', 'native', 'window-helper'),
+  // Relative to app path
+  path.join(__dirname, '..', '..', '..', 'native', 'window-helper'),
+];
+
+for (const addonPath of possiblePaths) {
+  try {
+    windowHelper = require(addonPath);
+    console.log('Successfully loaded window helper from:', addonPath);
+    break;
+  } catch (e) {
+    // Try next path
+  }
+}
+
+if (!windowHelper) {
+  throw new Error('Could not load window_helper native addon from any path. Tried: ' + possiblePaths.join(', '));
+}
+
 // In development mode, these are provided by Vite
 // In production, they're provided by Electron Forge
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
@@ -155,48 +198,51 @@ app.on('activate', () => {
 
 // IPC Handlers
 ipcMain.handle('get-sources', async () => {
+  // Get real window bounds from CoreGraphics
+  const realWindows = windowHelper.getOnScreenWindows();
+
+  // Get thumbnails from desktopCapturer (for visual preview)
   const sources = await desktopCapturer.getSources({
     types: ['window', 'screen'],
     thumbnailSize: { width: 150, height: 150 },
     fetchWindowIcons: true,
   });
 
-  // Note: Electron's desktopCapturer doesn't provide window bounds
-  // For a production app, you'd need native modules to get window positions
-  // For now, we'll arrange windows in a visual grid
-  const windowsOnly = sources.filter(s => !s.id.startsWith('screen'));
-
-  // Create a simple grid layout for windows
-  const cols = 3;
-  const windowWidth = 300;
-  const windowHeight = 200;
-  const padding = 50;
-  const startX = 100;
-  const startY = 100;
-
-  const sourcesWithBounds = windowsOnly.map((source, index) => {
-    const col = index % cols;
-    const row = Math.floor(index / cols);
+  // Map real windows with thumbnails from desktopCapturer
+  const windowsWithBoundsAndThumbnails = realWindows.map((realWindow) => {
+    // Try to find matching source by name
+    const matchingSource = sources.find(s => {
+      // desktopCapturer IDs are like "window:123:0" so we extract the window number
+      const sourceWindowId = s.id.split(':')[1];
+      return sourceWindowId === String(realWindow.windowNumber) || s.name === realWindow.name;
+    });
 
     return {
-      ...source,
-      thumbnail: source.thumbnail?.toDataURL?.() || source.thumbnail,
-      appIcon: source.appIcon?.toDataURL?.() || null,
-      bounds: {
-        x: startX + col * (windowWidth + padding),
-        y: startY + row * (windowHeight + padding),
-        width: windowWidth,
-        height: windowHeight,
-      },
+      id: `window:${realWindow.windowNumber}:0`,
+      name: realWindow.name || realWindow.ownerName,
+      thumbnail: matchingSource?.thumbnail?.toDataURL?.() || null,
+      appIcon: matchingSource?.appIcon?.toDataURL?.() || null,
+      bounds: realWindow.bounds,
+      ownerName: realWindow.ownerName,
+      windowNumber: realWindow.windowNumber,
+      pid: realWindow.pid,
     };
   });
 
-  return [...sourcesWithBounds, ...sources.filter(s => s.id.startsWith('screen'))];
+  // Add screens (displays) with their real bounds
+  const screens = sources.filter(s => s.id.startsWith('screen'));
+
+  return [...windowsWithBoundsAndThumbnails, ...screens];
 });
 
 ipcMain.handle('get-displays', async () => {
   const displays = screen.getAllDisplays();
   return displays;
+});
+
+ipcMain.handle('hit-test-window', async (_event, x: number, y: number) => {
+  const window = windowHelper.getWindowAtPoint(x, y);
+  return window;
 });
 
 ipcMain.on('open-selection', (_event, mode: 'area' | 'window' | 'display') => {

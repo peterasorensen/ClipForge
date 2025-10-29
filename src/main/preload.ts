@@ -36,12 +36,28 @@ export interface Display {
   internal: boolean;
 }
 
+export interface HitTestWindow {
+  windowNumber: number;
+  ownerName: string;
+  name: string;
+  pid: number;
+  bounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   getSources: (): Promise<DesktopCapturerSource[]> =>
     ipcRenderer.invoke('get-sources'),
 
   getDisplays: (): Promise<Display[]> =>
     ipcRenderer.invoke('get-displays'),
+
+  hitTestWindow: (x: number, y: number): Promise<HitTestWindow | {}> =>
+    ipcRenderer.invoke('hit-test-window', x, y),
 
   openSelection: (mode: 'area' | 'window' | 'display'): void =>
     ipcRenderer.send('open-selection', mode),
@@ -67,6 +83,7 @@ declare global {
     electronAPI: {
       getSources: () => Promise<DesktopCapturerSource[]>;
       getDisplays: () => Promise<Display[]>;
+      hitTestWindow: (x: number, y: number) => Promise<HitTestWindow | {}>;
       openSelection: (mode: 'area' | 'window' | 'display') => void;
       closeSelection: () => void;
       startRecording: () => void;
