@@ -10,7 +10,11 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ['electron'],
+      external: [
+        'electron',
+        '@ffmpeg-installer/ffmpeg',
+        '@ffprobe-installer/ffprobe',
+      ],
     },
   },
 });

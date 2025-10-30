@@ -41,6 +41,8 @@
     "vite": "^5.0.10"
   },
   "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
     "electron-store": "^8.1.0",
     "fluent-ffmpeg": "^2.1.2",
     "node-window-manager": "^2.2.4",

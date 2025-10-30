@@ -4,6 +4,42 @@ import Store from 'electron-store';
 import fs from 'fs/promises';
 import ffmpeg from 'fluent-ffmpeg';
 
+// Set up FFmpeg and FFprobe paths
+// In packaged app, they're in Resources folder; in dev, they're in node_modules
+const setupFFmpeg = () => {
+  try {
+    if (app.isPackaged) {
+      // In production, FFmpeg binaries are in Resources/@ffmpeg-installer
+      const resourcesPath = process.resourcesPath;
+      const platform = process.platform + '-' + process.arch;
+
+      const ffmpegPath = path.join(resourcesPath, '@ffmpeg-installer', platform, process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
+      const ffprobePath = path.join(resourcesPath, '@ffprobe-installer', platform, process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe');
+
+      console.log('Packaged app - FFmpeg path:', ffmpegPath);
+      console.log('Packaged app - FFprobe path:', ffprobePath);
+
+      ffmpeg.setFfmpegPath(ffmpegPath);
+      ffmpeg.setFfprobePath(ffprobePath);
+    } else {
+      // In development, use the npm packages
+      const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+      const ffprobeInstaller = require('@ffprobe-installer/ffprobe');
+
+      console.log('Development - FFmpeg path:', ffmpegInstaller.path);
+      console.log('Development - FFprobe path:', ffprobeInstaller.path);
+
+      ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+      ffmpeg.setFfprobePath(ffprobeInstaller.path);
+    }
+  } catch (error) {
+    console.error('Error setting up FFmpeg/FFprobe:', error);
+  }
+};
+
+// Call setup immediately
+setupFFmpeg();
+
 // Load native addon with proper path resolution
 // Try multiple paths to handle both dev and production builds
 interface WindowHelper {
@@ -637,16 +673,19 @@ ipcMain.on('open-editor', (_event, videoData?: Uint8Array) => {
 
 ipcMain.handle('get-pending-recording', async () => {
   if (!pendingRecordingData) {
+    console.log('No pending recording data');
     return null;
   }
 
   try {
+    console.log('Processing pending recording, data size:', pendingRecordingData.length, 'bytes');
     // Save to a temporary file
     const tempDir = app.getPath('temp');
     const timestamp = Date.now();
     const tempWebmPath = path.join(tempDir, `clip-forge-recording-${timestamp}.webm`);
     const tempMp4Path = path.join(tempDir, `clip-forge-recording-${timestamp}.mp4`);
 
+    console.log('Temp directory:', tempDir);
     console.log('Saving recording to:', tempWebmPath);
     await fs.writeFile(tempWebmPath, pendingRecordingData);
 
@@ -745,10 +784,14 @@ ipcMain.handle('import-media-files', async () => {
   }
 
   try {
+    console.log('Importing media files:', filePaths);
     const mediaFiles = await Promise.all(
       filePaths.map(async (filePath) => {
+        console.log('Processing file:', filePath);
         const stats = await fs.stat(filePath);
+        console.log('File stats:', { size: stats.size, path: filePath });
         const metadata = await getMediaMetadata(filePath);
+        console.log('File metadata:', metadata);
 
         return {
           filePath,
@@ -762,9 +805,11 @@ ipcMain.handle('import-media-files', async () => {
       })
     );
 
+    console.log('Successfully imported', mediaFiles.length, 'files');
     return { success: true, files: mediaFiles };
   } catch (error) {
     console.error('Error importing files:', error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     return { success: false, error: String(error) };
   }
 });
@@ -932,12 +977,16 @@ function getMediaMetadata(filePath: string): Promise<{
       return;
     }
 
+    console.log('Running ffprobe on:', filePath);
     ffmpeg.ffprobe(filePath, (error, metadata) => {
       if (error) {
+        console.error('FFprobe error for file:', filePath);
+        console.error('FFprobe error details:', error);
         reject(error);
         return;
       }
 
+      console.log('FFprobe successful for:', filePath);
       const videoStream = metadata.streams.find((s) => s.codec_type === 'video');
       const duration = metadata.format.duration || 0;
 

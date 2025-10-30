@@ -6,9 +6,6 @@ import fs from 'fs-extra';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
-    extraResource: [
-      './native'
-    ],
   },
   rebuildConfig: {},
   makers: [
@@ -84,6 +81,23 @@ const config: ForgeConfig = {
       }
 
       console.log(`Copied native modules from ${nativeSourcePath} to ${nativeDestPath}`);
+
+      // Copy FFmpeg and FFprobe installers
+      console.log('Copying FFmpeg and FFprobe binaries...');
+      const ffmpegSrc = path.join(process.cwd(), 'node_modules', '@ffmpeg-installer');
+      const ffprobeSrc = path.join(process.cwd(), 'node_modules', '@ffprobe-installer');
+      const ffmpegDest = path.join(resourcesPath, '@ffmpeg-installer');
+      const ffprobeDest = path.join(resourcesPath, '@ffprobe-installer');
+
+      if (await fs.pathExists(ffmpegSrc)) {
+        await fs.copy(ffmpegSrc, ffmpegDest);
+        console.log(`  Copied @ffmpeg-installer to Resources`);
+      }
+
+      if (await fs.pathExists(ffprobeSrc)) {
+        await fs.copy(ffprobeSrc, ffprobeDest);
+        console.log(`  Copied @ffprobe-installer to Resources`);
+      }
     },
     postMake: async (forgeConfig, makeResults) => {
       // The native modules were already copied in postPackage hook,
