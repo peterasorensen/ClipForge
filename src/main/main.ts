@@ -432,7 +432,8 @@ app.on('ready', () => {
 
   // Show dock icon (since windows use skipTaskbar)
   if (process.platform === 'darwin') {
-    app.dock.show();
+    // Keep dock icon visible to ensure tray icon persists
+    app.dock.show().catch(err => console.error('Failed to show dock:', err));
   }
 
   createControlBar();
@@ -529,6 +530,17 @@ ipcMain.on('start-recording', (_event, config?: { selectedSourceId?: string | nu
     }
   }
 
+  // Ensure tray icon persists during recording
+  if (!tray || tray.isDestroyed()) {
+    console.log('Recreating tray icon for recording');
+    createTray();
+  }
+
+  // Keep dock icon visible to maintain tray icon on macOS
+  if (process.platform === 'darwin') {
+    app.dock.show().catch(err => console.error('Failed to show dock during recording:', err));
+  }
+
   if (controlBar) {
     controlBar.hide();
   }
@@ -603,6 +615,12 @@ ipcMain.on('open-editor', (_event, videoData?: Uint8Array) => {
       console.error('Error capturing cursor data:', error);
       pendingCursorData = null;
     }
+  }
+
+  // Ensure tray icon persists when opening editor
+  if (!tray || tray.isDestroyed()) {
+    console.log('Recreating tray icon for editor');
+    createTray();
   }
 
   if (recordingToolbar) {
