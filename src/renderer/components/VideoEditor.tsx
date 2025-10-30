@@ -283,6 +283,83 @@ const EmptyState = styled.div`
   }
 `;
 
+const RightToolbar = styled.div`
+  position: fixed;
+  top: 60px;
+  right: 0;
+  bottom: 280px;
+  width: 48px;
+  background: ${({ theme }) => theme.colors.background.secondary};
+  border-left: 1px solid ${({ theme }) => theme.colors.border.primary};
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 0;
+  gap: 8px;
+  z-index: 20;
+`;
+
+const ToolbarButton = styled.button`
+  width: 36px;
+  height: 36px;
+  border-radius: ${({ theme }) => theme.borderRadius.sm};
+  background: ${({ theme }) => theme.colors.background.tertiary};
+  border: 1px solid ${({ theme }) => theme.colors.border.primary};
+  color: ${({ theme }) => theme.colors.text.secondary};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all ${({ theme }) => theme.transitions.fast};
+
+  &:hover {
+    background: ${({ theme }) => theme.colors.background.glass};
+    border-color: ${({ theme }) => theme.colors.accent.primary};
+    color: ${({ theme }) => theme.colors.text.primary};
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+`;
+
+const RightPanelWrapper = styled.div`
+  position: relative;
+  display: flex;
+`;
+
+const ZoomEditorCollapseButton = styled.button`
+  position: absolute;
+  top: 16px;
+  left: -23px;
+  width: 24px;
+  height: 48px;
+  background: ${({ theme }) => theme.colors.background.secondary};
+  border: 1px solid ${({ theme }) => theme.colors.border.primary};
+  border-radius: ${({ theme }) => theme.borderRadius.sm} 0 0 ${({ theme }) => theme.borderRadius.sm};
+  color: ${({ theme }) => theme.colors.text.secondary};
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+  transition: all ${({ theme }) => theme.transitions.fast};
+  box-shadow: -2px 0 4px rgba(0, 0, 0, 0.1);
+
+  &:hover {
+    background: ${({ theme }) => theme.colors.background.tertiary};
+    border-color: ${({ theme }) => theme.colors.accent.primary};
+    color: ${({ theme }) => theme.colors.text.primary};
+    left: -24px;
+  }
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+`;
+
 const VideoEditor: React.FC = () => {
   const {
     currentTime,
@@ -305,6 +382,7 @@ const VideoEditor: React.FC = () => {
 
   const [showExportPanel, setShowExportPanel] = useState(false);
   const [isLibraryCollapsed, setIsLibraryCollapsed] = useState(false);
+  const [isZoomEditorCollapsed, setIsZoomEditorCollapsed] = useState(false);
   const hasLoadedRecording = useRef(false);
 
   useEffect(() => {
@@ -511,12 +589,42 @@ const VideoEditor: React.FC = () => {
 
       {showExportPanel && <ExportPanel onClose={() => setShowExportPanel(false)} />}
       {selectedZoomSegmentId && (
-        <div style={{ position: 'fixed', top: 60, right: 0, bottom: 0, zIndex: 20 }}>
-          <ZoomEditor
-            segmentId={selectedZoomSegmentId}
-            onClose={() => setSelectedZoomSegment(null)}
-          />
-        </div>
+        <>
+          {isZoomEditorCollapsed ? (
+            <RightToolbar>
+              <ToolbarButton
+                onClick={() => setIsZoomEditorCollapsed(false)}
+                title="Zoom Editor"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.35-4.35" />
+                  <line x1="11" y1="8" x2="11" y2="14" />
+                  <line x1="8" y1="11" x2="14" y2="11" />
+                </svg>
+              </ToolbarButton>
+            </RightToolbar>
+          ) : (
+            <div style={{ position: 'fixed', top: 60, right: 0, bottom: 0, zIndex: 20 }}>
+              <RightPanelWrapper>
+                <ZoomEditorCollapseButton
+                  onClick={() => setIsZoomEditorCollapsed(true)}
+                  title="Hide Zoom Editor"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </ZoomEditorCollapseButton>
+                <ZoomEditor
+                  segmentId={selectedZoomSegmentId}
+                  onClose={() => setSelectedZoomSegment(null)}
+                  isCollapsed={isZoomEditorCollapsed}
+                  onToggleCollapse={() => setIsZoomEditorCollapsed(!isZoomEditorCollapsed)}
+                />
+              </RightPanelWrapper>
+            </div>
+          )}
+        </>
       )}
     </EditorContainer>
   );

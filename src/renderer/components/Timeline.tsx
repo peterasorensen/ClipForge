@@ -906,11 +906,24 @@ const Timeline: React.FC = () => {
   const handleZoomTimelineClick = (e: React.MouseEvent) => {
     if (!zoomTimelineRef.current) return;
 
+    // Don't create a new segment if we just interacted with an existing one
+    if (justInteractedWithSegmentRef.current) return;
+
     e.stopPropagation();
 
     const rect = zoomTimelineRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const clickTime = Math.max(0, x / zoom);
+
+    // Check if we're clicking on an existing segment
+    const clickedOnSegment = zoomSegments.some((segment) => {
+      const segmentStart = segment.startTime;
+      const segmentEnd = segment.startTime + segment.duration;
+      return clickTime >= segmentStart && clickTime <= segmentEnd;
+    });
+
+    // Don't create a new segment if clicking on an existing one
+    if (clickedOnSegment) return;
 
     // Default zoom segment duration is 3 seconds
     const defaultDuration = 3;
@@ -931,6 +944,8 @@ const Timeline: React.FC = () => {
 
     addZoomSegment(newZoomSegment);
   };
+
+  const justInteractedWithSegmentRef = useRef(false);
 
   const handleZoomSegmentMouseDown = (
     e: React.MouseEvent,
@@ -992,6 +1007,12 @@ const Timeline: React.FC = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
 
+      // Mark that we just interacted with a segment to prevent click from firing
+      justInteractedWithSegmentRef.current = true;
+      setTimeout(() => {
+        justInteractedWithSegmentRef.current = false;
+      }, 50);
+
       dragState.isDragging = false;
       dragState.isResizing = null;
       dragState.zoomSegmentId = null;
@@ -1029,6 +1050,18 @@ const Timeline: React.FC = () => {
       </TimelineContainer>
     );
   }
+
+  // Check if hover position overlaps with any existing zoom segment
+  const isHoverOverZoomSegment = () => {
+    if (zoomTimelineHoverX === null) return false;
+
+    const hoverTime = zoomTimelineHoverX / zoom;
+    return zoomSegments.some((segment) => {
+      const segmentStart = segment.startTime;
+      const segmentEnd = segment.startTime + segment.duration;
+      return hoverTime >= segmentStart && hoverTime <= segmentEnd;
+    });
+  };
 
   const visibleCount = 1 + visibleTimelines.length; // 1 for main timeline + visible timelines
 
@@ -1141,18 +1174,21 @@ const Timeline: React.FC = () => {
                     $zoom={zoom}
                     $selected={selectedZoomSegmentId === segment.id}
                     onMouseDown={(e) => handleZoomSegmentMouseDown(e, segment)}
+                    onClick={(e) => e.stopPropagation()}
                   >
                     <ZoomResizeHandle
                       $position="left"
                       onMouseDown={(e) => handleZoomSegmentMouseDown(e, segment, 'left')}
+                      onClick={(e) => e.stopPropagation()}
                     />
                     <ZoomResizeHandle
                       $position="right"
                       onMouseDown={(e) => handleZoomSegmentMouseDown(e, segment, 'right')}
+                      onClick={(e) => e.stopPropagation()}
                     />
                   </ZoomSegmentElement>
                 ))}
-                {zoomTimelineHoverX !== null && (
+                {zoomTimelineHoverX !== null && !isHoverOverZoomSegment() && (
                   <ZoomTimelineAddButton $x={zoomTimelineHoverX}>
                     <svg viewBox="0 0 24 24" fill="none">
                       <line x1="12" y1="5" x2="12" y2="19" />

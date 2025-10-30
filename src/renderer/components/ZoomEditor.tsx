@@ -32,40 +32,6 @@ const EditorPanel = styled.div`
 const EditorHeader = styled.div`
   padding: 20px;
   border-bottom: 1px solid ${({ theme }) => theme.colors.border.primary};
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-`;
-
-const EditorTitle = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-`;
-
-const BackButton = styled.button`
-  width: 32px;
-  height: 32px;
-  border-radius: ${({ theme }) => theme.borderRadius.sm};
-  background: ${({ theme }) => theme.colors.background.tertiary};
-  border: 1px solid ${({ theme }) => theme.colors.border.primary};
-  color: ${({ theme }) => theme.colors.text.secondary};
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all ${({ theme }) => theme.transitions.fast};
-
-  &:hover {
-    background: ${({ theme }) => theme.colors.background.glass};
-    border-color: ${({ theme }) => theme.colors.border.accent};
-    color: ${({ theme }) => theme.colors.text.primary};
-  }
-
-  svg {
-    width: 16px;
-    height: 16px;
-  }
 `;
 
 const TitleText = styled.h2`
@@ -350,9 +316,11 @@ const PositionLabel = styled.div`
 interface ZoomEditorProps {
   segmentId: string;
   onClose: () => void;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
-const ZoomEditor: React.FC<ZoomEditorProps> = ({ segmentId, onClose }) => {
+const ZoomEditor: React.FC<ZoomEditorProps> = ({ segmentId, onClose: _onClose, isCollapsed: _isCollapsed, onToggleCollapse: _onToggleCollapse }) => {
   const { zoomSegments, updateZoomSegment } = useEditorStore();
   const segment = zoomSegments.find((s) => s.id === segmentId);
 
@@ -433,14 +401,7 @@ const ZoomEditor: React.FC<ZoomEditorProps> = ({ segmentId, onClose }) => {
   return (
     <EditorPanel>
       <EditorHeader>
-        <EditorTitle>
-          <BackButton onClick={onClose} title="Close Zoom editor">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-          </BackButton>
-          <TitleText>Zoom editor</TitleText>
-        </EditorTitle>
+        <TitleText>Zoom editor</TitleText>
       </EditorHeader>
 
       <EditorContent>
