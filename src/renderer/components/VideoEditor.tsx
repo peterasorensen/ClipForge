@@ -5,6 +5,7 @@ import VideoPlayer from './VideoPlayer';
 import Timeline from './Timeline';
 import MediaLibrary from './MediaLibrary';
 import ExportPanel from './ExportPanel';
+import ZoomEditor from './ZoomEditor';
 import { PlayIcon, PauseIcon } from './Icons';
 
 const EditorContainer = styled.div`
@@ -290,13 +291,16 @@ const VideoEditor: React.FC = () => {
     mediaItems,
     tracks,
     selectedClipIds,
+    selectedZoomSegmentId,
     setIsPlaying,
     addMediaItem,
     addTrack,
     addClip,
     removeClip,
+    removeZoomSegment,
     undo,
     redo,
+    setSelectedZoomSegment,
   } = useEditorStore();
 
   const [showExportPanel, setShowExportPanel] = useState(false);
@@ -391,21 +395,30 @@ const VideoEditor: React.FC = () => {
         return;
       }
 
-      // Delete selected clips with Backspace or Delete key
-      if ((e.key === 'Backspace' || e.key === 'Delete') && selectedClipIds.length > 0) {
+      // Delete selected clips or zoom segments with Backspace or Delete key
+      if (e.key === 'Backspace' || e.key === 'Delete') {
         // Prevent default browser back navigation on Backspace
         e.preventDefault();
 
+        // Delete selected zoom segment (takes priority)
+        if (selectedZoomSegmentId) {
+          removeZoomSegment(selectedZoomSegmentId);
+          setSelectedZoomSegment(null);
+          return;
+        }
+
         // Delete all selected clips
-        selectedClipIds.forEach((clipId) => {
-          removeClip(clipId);
-        });
+        if (selectedClipIds.length > 0) {
+          selectedClipIds.forEach((clipId) => {
+            removeClip(clipId);
+          });
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedClipIds, removeClip, undo, redo]);
+  }, [selectedClipIds, selectedZoomSegmentId, removeClip, removeZoomSegment, setSelectedZoomSegment, undo, redo]);
 
   const handlePlayPause = () => {
     setIsPlaying(!isPlaying);
@@ -495,6 +508,14 @@ const VideoEditor: React.FC = () => {
       </MainContent>
 
       {showExportPanel && <ExportPanel onClose={() => setShowExportPanel(false)} />}
+      {selectedZoomSegmentId && (
+        <div style={{ position: 'fixed', top: 60, right: 0, bottom: 0, zIndex: 20 }}>
+          <ZoomEditor
+            segmentId={selectedZoomSegmentId}
+            onClose={() => setSelectedZoomSegment(null)}
+          />
+        </div>
+      )}
     </EditorContainer>
   );
 };

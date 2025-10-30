@@ -67,6 +67,16 @@ export interface TimelineTrack {
   visible: boolean;
 }
 
+export interface ZoomSegment {
+  id: string;
+  startTime: number; // Position on timeline in seconds
+  duration: number;  // Duration in seconds
+  zoomLevel: number; // 1.0-2.0 (1.0 = no zoom, 2.0 = 2x zoom)
+  mode: 'auto' | 'manual'; // auto follows cursor, manual is user-controlled
+  targetX?: number; // Manual mode: target X position (0-1, relative to video width)
+  targetY?: number; // Manual mode: target Y position (0-1, relative to video height)
+}
+
 interface HistoryState {
   tracks: TimelineTrack[];
   duration: number;
@@ -83,6 +93,10 @@ interface EditorState {
   zoom: number; // Pixels per second
   isPlaying: boolean;
   duration: number; // Total timeline duration
+
+  // Zoom segments
+  zoomSegments: ZoomSegment[];
+  selectedZoomSegmentId: string | null;
 
   // Selection
   selectedClipIds: string[];
@@ -110,6 +124,11 @@ interface EditorState {
   updateClip: (id: string, updates: Partial<TimelineClip>, skipHistory?: boolean) => void;
   splitClip: (clipId: string, splitTime: number) => void;
   pushToHistory: () => void;
+
+  addZoomSegment: (segment: ZoomSegment) => void;
+  removeZoomSegment: (id: string) => void;
+  updateZoomSegment: (id: string, updates: Partial<ZoomSegment>) => void;
+  setSelectedZoomSegment: (id: string | null) => void;
 
   setCurrentTime: (time: number) => void;
   setZoom: (zoom: number) => void;
@@ -202,6 +221,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   zoom: 50, // 50 pixels per second
   isPlaying: false,
   duration: 0,
+  zoomSegments: [],
+  selectedZoomSegmentId: null,
   selectedClipIds: [],
   selectedTrackId: null,
   exportProgress: 0,
@@ -399,6 +420,28 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       };
     }),
 
+  // Zoom segment actions
+  addZoomSegment: (segment) =>
+    set((state) => ({
+      zoomSegments: [...state.zoomSegments, segment],
+      selectedZoomSegmentId: segment.id,
+    })),
+
+  removeZoomSegment: (id) =>
+    set((state) => ({
+      zoomSegments: state.zoomSegments.filter((segment) => segment.id !== id),
+      selectedZoomSegmentId: state.selectedZoomSegmentId === id ? null : state.selectedZoomSegmentId,
+    })),
+
+  updateZoomSegment: (id, updates) =>
+    set((state) => ({
+      zoomSegments: state.zoomSegments.map((segment) =>
+        segment.id === id ? { ...segment, ...updates } : segment
+      ),
+    })),
+
+  setSelectedZoomSegment: (id) => set({ selectedZoomSegmentId: id }),
+
   // Playback actions
   setCurrentTime: (time) => set({ currentTime: time }),
   setZoom: (zoom) => set({ zoom }),
@@ -465,6 +508,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       zoom: 50,
       isPlaying: false,
       duration: 0,
+      zoomSegments: [],
+      selectedZoomSegmentId: null,
       selectedClipIds: [],
       selectedTrackId: null,
       exportProgress: 0,

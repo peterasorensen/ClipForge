@@ -82,6 +82,19 @@ const VideoWrapper = styled.div<{ $aspectRatio?: string }>`
   justify-content: center;
 `;
 
+const VideoTransformContainer = styled.div<{
+  $scale: number;
+  $translateX: number;
+  $translateY: number;
+}>`
+  width: 100%;
+  height: 100%;
+  transform: scale(${({ $scale }) => $scale})
+             translate(${({ $translateX }) => $translateX}%, ${({ $translateY }) => $translateY}%);
+  transform-origin: center center;
+  transition: transform 0.25s cubic-bezier(0.4, 0.0, 0.2, 1);
+`;
+
 const Video = styled.video<{ $objectFit: 'contain' | 'cover' }>`
   width: 100%;
   height: 100%;
@@ -178,6 +191,7 @@ const VideoPlayer: React.FC = () => {
     isPlaying,
     tracks,
     mediaItems,
+    zoomSegments,
     setCurrentTime,
     setIsPlaying,
   } = useEditorStore();
@@ -288,6 +302,40 @@ const VideoPlayer: React.FC = () => {
     return aspectRatio.replace(':', ' / ');
   };
 
+  // Calculate current zoom transform
+  const getZoomTransform = (): { scale: number; translateX: number; translateY: number } => {
+    // Find active zoom segment at current time
+    const activeZoom = zoomSegments.find(
+      (segment) =>
+        currentTime >= segment.startTime &&
+        currentTime < segment.startTime + segment.duration
+    );
+
+    if (!activeZoom) {
+      // No zoom active, return identity transform
+      return { scale: 1.0, translateX: 0, translateY: 0 };
+    }
+
+    const scale = activeZoom.zoomLevel;
+
+    // Calculate translation based on mode
+    if (activeZoom.mode === 'manual') {
+      // Manual mode: translate to targetX/Y position
+      // Convert 0-1 coordinates to percentage translation
+      // When zoomed in, we need to translate in the opposite direction
+      // to make the target point appear centered
+      const translateX = ((0.5 - (activeZoom.targetX || 0.5)) * 100) / scale;
+      const translateY = ((0.5 - (activeZoom.targetY || 0.5)) * 100) / scale;
+      return { scale, translateX, translateY };
+    } else {
+      // Auto mode: For now, keep centered (cursor tracking will be added later)
+      // TODO: Implement cursor tracking data playback
+      return { scale, translateX: 0, translateY: 0 };
+    }
+  };
+
+  const zoomTransform = getZoomTransform();
+
   if (!videoSrc) {
     return (
       <PlayerContainer>
@@ -334,7 +382,13 @@ const VideoPlayer: React.FC = () => {
         onMouseLeave={handleMouseLeave}
         onClick={handleVideoClick}
       >
-        <Video ref={videoRef} src={videoSrc} $objectFit={cropMode ? 'cover' : 'contain'} />
+        <VideoTransformContainer
+          $scale={zoomTransform.scale}
+          $translateX={zoomTransform.translateX}
+          $translateY={zoomTransform.translateY}
+        >
+          <Video ref={videoRef} src={videoSrc} $objectFit={cropMode ? 'cover' : 'contain'} />
+        </VideoTransformContainer>
         <VideoOverlay $show={showOverlay}>
           <PlayButton>
             <svg width="32" height="32" viewBox="0 0 24 24" fill="white">

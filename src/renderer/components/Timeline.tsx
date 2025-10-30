@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { useEditorStore, TimelineClip } from '../store';
+import { useEditorStore, TimelineClip, ZoomSegment } from '../store';
 
 const TimelineContainer = styled.div`
   flex: 1;
@@ -372,29 +372,54 @@ const AdditionalTimelineTrack = styled.div`
   position: relative;
 `;
 
-const ZoomSegment = styled.div.attrs<{
+const ZoomSegmentElement = styled.div.attrs<{
   $startTime: number;
   $duration: number;
   $zoom: number;
-}>(({ $startTime, $duration, $zoom }) => ({
+  $selected: boolean;
+}>(({ $startTime, $duration, $zoom, $selected }) => ({
   style: {
     left: `${$startTime * $zoom}px`,
     width: `${$duration * $zoom}px`,
+    background: $selected ? '#8a9cff' : '#6b7dff',
+    borderColor: $selected ? '#aabbff' : 'transparent',
   }
 }))<{
   $startTime: number;
   $duration: number;
   $zoom: number;
+  $selected: boolean;
 }>`
   position: absolute;
   height: 24px;
   top: 8px;
-  background: #6b7dff;
+  border: 2px solid;
   border-radius: 8px;
-  cursor: pointer;
+  cursor: move;
 
   &:hover {
-    background: #7a8cff;
+    background: #7a8cff !important;
+  }
+`;
+
+const ZoomResizeHandle = styled.div<{ $position: 'left' | 'right' }>`
+  position: absolute;
+  ${({ $position }) => $position}: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  background: ${({ theme }) => theme.colors.accent.primary};
+  opacity: 0;
+  transition: opacity ${({ theme }) => theme.transitions.fast};
+  z-index: 1;
+
+  ${ZoomSegmentElement}:hover & {
+    opacity: 0.6;
+  }
+
+  &:hover {
+    opacity: 1 !important;
   }
 `;
 
@@ -430,6 +455,40 @@ const LayoutSegment = styled.div.attrs<{
   }
 `;
 
+const ZoomTimelineAddButton = styled.div.attrs<{ $x: number }>(({ $x }) => ({
+  style: {
+    left: `${$x}px`,
+  }
+}))<{ $x: number }>`
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  background: ${({ theme }) => theme.colors.accent.primary};
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: ${({ theme }) => theme.shadows.md};
+  transition: all ${({ theme }) => theme.transitions.fast};
+  z-index: 5;
+
+  &:hover {
+    background: ${({ theme }) => theme.colors.accent.hover};
+    box-shadow: ${({ theme }) => theme.shadows.glow};
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+
+  svg {
+    width: 14px;
+    height: 14px;
+    stroke: ${({ theme }) => theme.colors.text.primary};
+    stroke-width: 2.5px;
+  }
+`;
+
 type TimelineType = 'zooms' | 'layouts';
 
 const Timeline: React.FC = () => {
@@ -441,12 +500,15 @@ const Timeline: React.FC = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
   const [isZoomHovered, setIsZoomHovered] = useState(false);
+  const [zoomTimelineHoverX, setZoomTimelineHoverX] = useState<number | null>(null);
+  const zoomTimelineRef = useRef<HTMLDivElement>(null);
 
   // Use refs for drag state to avoid re-renders during drag
   const dragStateRef = useRef({
     isDragging: false,
     isResizing: null as 'left' | 'right' | null,
     clipId: null as string | null,
+    zoomSegmentId: null as string | null,
     startX: 0,
     startTime: 0,
     startDuration: 0,
@@ -460,6 +522,8 @@ const Timeline: React.FC = () => {
     duration,
     mediaItems,
     selectedClipIds,
+    zoomSegments,
+    selectedZoomSegmentId,
     setZoom,
     setCurrentTime,
     updateClip,
@@ -467,6 +531,9 @@ const Timeline: React.FC = () => {
     addClip,
     addTrack,
     pushToHistory,
+    addZoomSegment,
+    updateZoomSegment,
+    setSelectedZoomSegment,
   } = useEditorStore();
 
   const toggleTimeline = (timeline: TimelineType) => {
@@ -825,6 +892,115 @@ const Timeline: React.FC = () => {
     addClip(newClip);
   };
 
+  const handleZoomTimelineMouseMove = (e: React.MouseEvent) => {
+    if (!zoomTimelineRef.current) return;
+    const rect = zoomTimelineRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    setZoomTimelineHoverX(x);
+  };
+
+  const handleZoomTimelineMouseLeave = () => {
+    setZoomTimelineHoverX(null);
+  };
+
+  const handleZoomTimelineClick = (e: React.MouseEvent) => {
+    if (!zoomTimelineRef.current) return;
+
+    e.stopPropagation();
+
+    const rect = zoomTimelineRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const clickTime = Math.max(0, x / zoom);
+
+    // Default zoom segment duration is 3 seconds
+    const defaultDuration = 3;
+
+    // Determine if this is a native recording or imported clip
+    // For now, default to 'auto' mode if we have video tracks from recordings
+    const hasNativeRecording = tracks.some(track => track.type === 'video');
+
+    const newZoomSegment: ZoomSegment = {
+      id: `zoom-${Date.now()}`,
+      startTime: clickTime,
+      duration: defaultDuration,
+      zoomLevel: 1.5, // Default 1.5x zoom
+      mode: hasNativeRecording ? 'auto' : 'manual',
+      targetX: 0.5, // Center by default for manual mode
+      targetY: 0.5,
+    };
+
+    addZoomSegment(newZoomSegment);
+  };
+
+  const handleZoomSegmentMouseDown = (
+    e: React.MouseEvent,
+    segment: ZoomSegment,
+    resizeHandle?: 'left' | 'right'
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const dragState = dragStateRef.current;
+    dragState.isDragging = !resizeHandle;
+    dragState.isResizing = resizeHandle || null;
+    dragState.zoomSegmentId = segment.id;
+    dragState.clipId = null; // Not dragging a clip
+    dragState.startX = e.clientX;
+    dragState.startTime = segment.startTime;
+    dragState.startDuration = segment.duration;
+
+    setSelectedZoomSegment(segment.id);
+
+    let rafId: number | null = null;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      e.preventDefault();
+
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+
+      rafId = requestAnimationFrame(() => {
+        const deltaX = e.clientX - dragState.startX;
+        const deltaTime = deltaX / zoom;
+
+        if (dragState.isDragging && dragState.zoomSegmentId) {
+          // Move zoom segment
+          const newStartTime = Math.max(0, dragState.startTime + deltaTime);
+          updateZoomSegment(dragState.zoomSegmentId, { startTime: newStartTime });
+        } else if (dragState.isResizing === 'left' && dragState.zoomSegmentId) {
+          // Resize from left
+          const newStartTime = Math.max(0, dragState.startTime + deltaTime);
+          const newDuration = Math.max(0.5, dragState.startDuration - deltaTime);
+          updateZoomSegment(dragState.zoomSegmentId, {
+            startTime: newStartTime,
+            duration: newDuration,
+          });
+        } else if (dragState.isResizing === 'right' && dragState.zoomSegmentId) {
+          // Resize from right
+          const newDuration = Math.max(0.5, dragState.startDuration + deltaTime);
+          updateZoomSegment(dragState.zoomSegmentId, { duration: newDuration });
+        }
+        rafId = null;
+      });
+    };
+
+    const handleMouseUp = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+
+      dragState.isDragging = false;
+      dragState.isResizing = null;
+      dragState.zoomSegmentId = null;
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
   if (tracks.length === 0) {
     return (
       <TimelineContainer>
@@ -951,10 +1127,39 @@ const Timeline: React.FC = () => {
 
           {visibleTimelines.includes('zooms') && (
             <AdditionalTimelineRow>
-              <AdditionalTimelineTrack>
-                {/* Sample zoom segments - these would come from state in real implementation */}
-                <ZoomSegment $startTime={5} $duration={3} $zoom={zoom} />
-                <ZoomSegment $startTime={15} $duration={2} $zoom={zoom} />
+              <AdditionalTimelineTrack
+                ref={zoomTimelineRef}
+                onMouseMove={handleZoomTimelineMouseMove}
+                onMouseLeave={handleZoomTimelineMouseLeave}
+                onClick={handleZoomTimelineClick}
+              >
+                {zoomSegments.map((segment) => (
+                  <ZoomSegmentElement
+                    key={segment.id}
+                    $startTime={segment.startTime}
+                    $duration={segment.duration}
+                    $zoom={zoom}
+                    $selected={selectedZoomSegmentId === segment.id}
+                    onMouseDown={(e) => handleZoomSegmentMouseDown(e, segment)}
+                  >
+                    <ZoomResizeHandle
+                      $position="left"
+                      onMouseDown={(e) => handleZoomSegmentMouseDown(e, segment, 'left')}
+                    />
+                    <ZoomResizeHandle
+                      $position="right"
+                      onMouseDown={(e) => handleZoomSegmentMouseDown(e, segment, 'right')}
+                    />
+                  </ZoomSegmentElement>
+                ))}
+                {zoomTimelineHoverX !== null && (
+                  <ZoomTimelineAddButton $x={zoomTimelineHoverX}>
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                  </ZoomTimelineAddButton>
+                )}
                 <RowLabel>Zooms</RowLabel>
               </AdditionalTimelineTrack>
             </AdditionalTimelineRow>
