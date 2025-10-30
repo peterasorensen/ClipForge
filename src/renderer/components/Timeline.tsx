@@ -21,41 +21,66 @@ const TimelineHeader = styled.div`
 
 const ZoomControls = styled.div`
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
+  user-select: none;
+`;
+
+const ZoomSliderContainer = styled.div`
+  position: relative;
+  width: 120px;
+  height: 24px;
+  display: flex;
   align-items: center;
 `;
 
-const ZoomButton = styled.button`
-  width: 28px;
-  height: 28px;
-  border-radius: ${({ theme }) => theme.borderRadius.sm};
+const ZoomSliderTrack = styled.div`
+  width: 100%;
+  height: 4px;
   background: ${({ theme }) => theme.colors.background.secondary};
-  border: 1px solid ${({ theme }) => theme.colors.border.primary};
-  color: ${({ theme }) => theme.colors.text.primary};
+  border-radius: 2px;
+  position: relative;
   cursor: pointer;
-  transition: all ${({ theme }) => theme.transitions.fast};
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+`;
+
+const ZoomSliderThumb = styled.div.attrs<{ $position: number }>(({ $position }) => ({
+  style: {
+    left: `${$position}%`,
+  }
+}))<{ $position: number }>`
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 16px;
+  height: 16px;
+  background: ${({ theme }) => theme.colors.accent.primary};
+  border-radius: 50%;
+  cursor: grab;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: box-shadow ${({ theme }) => theme.transitions.fast};
 
   &:hover {
-    background: ${({ theme }) => theme.colors.background.glass};
-    border-color: ${({ theme }) => theme.colors.border.accent};
+    box-shadow: 0 0 8px ${({ theme }) => theme.colors.accent.glow};
+  }
+
+  &:active {
+    cursor: grabbing;
+    box-shadow: 0 0 12px ${({ theme }) => theme.colors.accent.glow};
   }
 `;
 
 const ZoomLabel = styled.span`
   font-size: 12px;
   color: ${({ theme }) => theme.colors.text.secondary};
-  min-width: 60px;
-  text-align: center;
+  white-space: nowrap;
 `;
 
 const TimelineContent = styled.div`
   flex: 1;
   display: flex;
   overflow: auto;
+  padding-left: 16px;
+  background: ${({ theme }) => theme.colors.background.primary};
 
   &::-webkit-scrollbar {
     width: 8px;
@@ -76,36 +101,15 @@ const TimelineContent = styled.div`
   }
 `;
 
-const TrackList = styled.div`
-  width: 120px;
-  background: ${({ theme }) => theme.colors.background.secondary};
-  border-right: 1px solid ${({ theme }) => theme.colors.border.primary};
-  flex-shrink: 0;
-`;
-
-const TrackHeader = styled.div`
-  height: 60px;
-  padding: 12px;
-  border-bottom: 1px solid ${({ theme }) => theme.colors.border.primary};
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4px;
-`;
-
-const TrackName = styled.div`
-  font-size: 13px;
-  font-weight: 500;
-  color: ${({ theme }) => theme.colors.text.primary};
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-`;
-
-const TrackType = styled.div`
-  font-size: 11px;
+const RowLabel = styled.div`
+  position: absolute;
+  bottom: 2px;
+  left: 8px;
+  font-size: 10px;
   color: ${({ theme }) => theme.colors.text.muted};
-  text-transform: uppercase;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.6;
 `;
 
 const TracksContainer = styled.div`
@@ -116,16 +120,19 @@ const TracksContainer = styled.div`
 
 const RulerContainer = styled.div`
   height: 30px;
-  background: ${({ theme }) => theme.colors.background.tertiary};
+  background: ${({ theme }) => theme.colors.background.primary};
   border-bottom: 1px solid ${({ theme }) => theme.colors.border.primary};
   position: relative;
   overflow: hidden;
 `;
 
-const Ruler = styled.div<{ $zoom: number }>`
+const Ruler = styled.div.attrs<{ $zoom: number }>(({ $zoom }) => ({
+  style: {
+    width: `${$zoom * 100}px`, // 100 seconds visible
+  }
+}))<{ $zoom: number }>`
   height: 100%;
   position: relative;
-  width: ${({ $zoom }) => $zoom * 100}px; /* 100 seconds visible */
 `;
 
 const RulerMark = styled.div.attrs<{ $position: number }>(({ $position }) => ({
@@ -149,10 +156,11 @@ const RulerMark = styled.div.attrs<{ $position: number }>(({ $position }) => ({
 `;
 
 const RulerLabel = styled.span`
-  font-size: 10px;
-  color: ${({ theme }) => theme.colors.text.muted};
+  font-size: 11px;
+  color: ${({ theme }) => theme.colors.text.secondary};
   margin-left: 4px;
-  font-family: 'Courier New', monospace;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 400;
 `;
 
 const TrackRow = styled.div<{ $isDragOver?: boolean }>`
@@ -357,19 +365,6 @@ const AdditionalTimelineRow = styled.div`
   align-items: center;
 `;
 
-const AdditionalTimelineLabel = styled.div`
-  width: 120px;
-  height: 100%;
-  background: ${({ theme }) => theme.colors.background.secondary};
-  border-right: 1px solid ${({ theme }) => theme.colors.border.primary};
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  font-size: 12px;
-  font-weight: 500;
-  color: ${({ theme }) => theme.colors.text.primary};
-  flex-shrink: 0;
-`;
 
 const AdditionalTimelineTrack = styled.div`
   flex: 1;
@@ -438,10 +433,14 @@ const LayoutSegment = styled.div.attrs<{
 type TimelineType = 'zooms' | 'layouts';
 
 const Timeline: React.FC = () => {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const tracksContainerRef = useRef<HTMLDivElement>(null);
+  const timelineContentRef = useRef<HTMLDivElement>(null);
+  const zoomLabelTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [dragOverTrackId, setDragOverTrackId] = useState<string | null>(null);
   const [visibleTimelines, setVisibleTimelines] = useState<TimelineType[]>(['zooms', 'layouts']);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [isZoomHovered, setIsZoomHovered] = useState(false);
 
   // Use refs for drag state to avoid re-renders during drag
   const dragStateRef = useRef({
@@ -467,6 +466,7 @@ const Timeline: React.FC = () => {
     setSelectedClips,
     addClip,
     addTrack,
+    pushToHistory,
   } = useEditorStore();
 
   const toggleTimeline = (timeline: TimelineType) => {
@@ -489,13 +489,117 @@ const Timeline: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [dropdownOpen]);
 
-  const handleZoomIn = () => {
-    setZoom(Math.min(zoom * 1.5, 200));
+  // Track container width for calculating visible time
+  useEffect(() => {
+    if (!timelineContentRef.current) return;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+
+    resizeObserver.observe(timelineContentRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  // Calculate visible time in seconds
+  const getVisibleTime = () => {
+    if (containerWidth === 0) return 0;
+    return containerWidth / zoom;
   };
 
-  const handleZoomOut = () => {
-    setZoom(Math.max(zoom / 1.5, 10));
+  // Format visible time as "X seconds" or "X minutes"
+  const formatVisibleTime = () => {
+    const visibleSeconds = getVisibleTime();
+    if (visibleSeconds < 60) {
+      return `${Math.round(visibleSeconds)} second${Math.round(visibleSeconds) !== 1 ? 's' : ''} visible`;
+    } else {
+      const minutes = visibleSeconds / 60;
+      if (minutes < 10) {
+        return `${minutes.toFixed(1)} minutes visible`;
+      } else {
+        return `${Math.round(minutes)} minutes visible`;
+      }
+    }
   };
+
+  // Convert zoom (10-200 px/s) to slider position (0-100%)
+  const zoomToSliderPosition = () => {
+    const minZoom = 10;
+    const maxZoom = 200;
+    return ((zoom - minZoom) / (maxZoom - minZoom)) * 100;
+  };
+
+  // Handle slider drag
+  const handleSliderMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const sliderElement = e.currentTarget as HTMLElement;
+    const rect = sliderElement.getBoundingClientRect();
+
+    const updateZoom = (clientX: number) => {
+      const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
+      const percentage = x / rect.width;
+      const minZoom = 10;
+      const maxZoom = 200;
+      const newZoom = minZoom + percentage * (maxZoom - minZoom);
+      setZoom(Math.max(minZoom, Math.min(newZoom, maxZoom)));
+    };
+
+    updateZoom(e.clientX);
+
+    const handleMouseMove = (e: MouseEvent) => {
+      updateZoom(e.clientX);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Handle pinch/spread gesture for zooming
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      // Check if this is a pinch gesture (Ctrl/Cmd + wheel)
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+
+        // Show zoom label during gesture
+        setIsZoomHovered(true);
+
+        // Clear existing timeout
+        if (zoomLabelTimeoutRef.current) {
+          clearTimeout(zoomLabelTimeoutRef.current);
+        }
+
+        // Hide label after 1 second of no gesture
+        zoomLabelTimeoutRef.current = setTimeout(() => {
+          setIsZoomHovered(false);
+        }, 1000);
+
+        const delta = -e.deltaY;
+        const zoomFactor = delta > 0 ? 1.03 : 0.97;
+        const newZoom = zoom * zoomFactor;
+
+        setZoom(Math.max(10, Math.min(newZoom, 200)));
+      }
+    };
+
+    const container = tracksContainerRef.current;
+    if (!container) return;
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+      if (zoomLabelTimeoutRef.current) {
+        clearTimeout(zoomLabelTimeoutRef.current);
+      }
+    };
+  }, [zoom]);
 
   const handleClipMouseDown = (
     e: React.MouseEvent,
@@ -519,6 +623,7 @@ const Timeline: React.FC = () => {
     setSelectedClips([clipId]);
 
     let rafId: number | null = null;
+    let hasMoved = false;
 
     const handleMouseMove = (e: MouseEvent) => {
       e.preventDefault();
@@ -533,10 +638,15 @@ const Timeline: React.FC = () => {
         const deltaX = e.clientX - dragState.startX;
         const deltaTime = deltaX / zoom;
 
+        // Track if we've moved
+        if (!hasMoved && Math.abs(deltaX) > 2) {
+          hasMoved = true;
+        }
+
         if (dragState.isDragging && dragState.clipId) {
           // Move clip
           const newStartTime = Math.max(0, dragState.startTime + deltaTime);
-          updateClip(dragState.clipId, { startTime: newStartTime });
+          updateClip(dragState.clipId, { startTime: newStartTime }, true);
         } else if (dragState.isResizing === 'left' && dragState.clipId) {
           // Resize from left
           const newStartTime = Math.max(0, dragState.startTime + deltaTime);
@@ -547,11 +657,11 @@ const Timeline: React.FC = () => {
             startTime: newStartTime,
             duration: newDuration,
             trimStart: newTrimStart,
-          });
+          }, true);
         } else if (dragState.isResizing === 'right' && dragState.clipId) {
           // Resize from right
           const newDuration = Math.max(0.1, dragState.startDuration + deltaTime);
-          updateClip(dragState.clipId, { duration: newDuration });
+          updateClip(dragState.clipId, { duration: newDuration }, true);
         }
         rafId = null;
       });
@@ -565,6 +675,11 @@ const Timeline: React.FC = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
 
+      // Save to history if we actually moved the clip
+      if (hasMoved) {
+        pushToHistory();
+      }
+
       // Reset state
       dragState.isDragging = false;
       dragState.isResizing = null;
@@ -576,9 +691,9 @@ const Timeline: React.FC = () => {
   };
 
   const handleTimelineClick = (e: React.MouseEvent) => {
-    if (!containerRef.current) return;
+    if (!tracksContainerRef.current) return;
 
-    const rect = containerRef.current.getBoundingClientRect();
+    const rect = tracksContainerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const time = x / zoom;
 
@@ -713,13 +828,19 @@ const Timeline: React.FC = () => {
       <TimelineContainer>
         <TimelineHeader>
           <span style={{ fontSize: '13px', fontWeight: 500 }}>Timeline</span>
-          <ZoomControls>
-            <ZoomButton onClick={handleZoomOut}>−</ZoomButton>
-            <ZoomLabel>{Math.round(zoom)}px/s</ZoomLabel>
-            <ZoomButton onClick={handleZoomIn}>+</ZoomButton>
+          <ZoomControls
+            onMouseEnter={() => setIsZoomHovered(true)}
+            onMouseLeave={() => setIsZoomHovered(false)}
+          >
+            {isZoomHovered && <ZoomLabel>{formatVisibleTime()}</ZoomLabel>}
+            <ZoomSliderContainer onMouseDown={handleSliderMouseDown}>
+              <ZoomSliderTrack />
+              <ZoomSliderThumb $position={zoomToSliderPosition()} />
+            </ZoomSliderContainer>
           </ZoomControls>
         </TimelineHeader>
         <TimelineContent
+          ref={timelineContentRef}
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleEmptyTimelineDrop}
         >
@@ -765,35 +886,25 @@ const Timeline: React.FC = () => {
                   checked={visibleTimelines.includes('layouts')}
                   onChange={() => toggleTimeline('layouts')}
                 />
-                Layouts
+                Camera Layouts
               </DropdownItem>
             </DropdownMenu>
           </TimelineVisibilityDropdown>
         </div>
-        <ZoomControls>
-          <ZoomButton onClick={handleZoomOut}>−</ZoomButton>
-          <ZoomLabel>{Math.round(zoom)}px/s</ZoomLabel>
-          <ZoomButton onClick={handleZoomIn}>+</ZoomButton>
+        <ZoomControls
+          onMouseEnter={() => setIsZoomHovered(true)}
+          onMouseLeave={() => setIsZoomHovered(false)}
+        >
+          {isZoomHovered && <ZoomLabel>{formatVisibleTime()}</ZoomLabel>}
+          <ZoomSliderContainer onMouseDown={handleSliderMouseDown}>
+            <ZoomSliderTrack />
+            <ZoomSliderThumb $position={zoomToSliderPosition()} />
+          </ZoomSliderContainer>
         </ZoomControls>
       </TimelineHeader>
 
-      <TimelineContent>
-        <TrackList>
-          {tracks.map((track) => (
-            <TrackHeader key={track.id}>
-              <TrackName>{track.name}</TrackName>
-              <TrackType>{track.type}</TrackType>
-            </TrackHeader>
-          ))}
-          {visibleTimelines.includes('zooms') && (
-            <AdditionalTimelineLabel>Zooms</AdditionalTimelineLabel>
-          )}
-          {visibleTimelines.includes('layouts') && (
-            <AdditionalTimelineLabel>Layout</AdditionalTimelineLabel>
-          )}
-        </TrackList>
-
-        <TracksContainer ref={containerRef} onClick={handleTimelineClick}>
+      <TimelineContent ref={timelineContentRef}>
+        <TracksContainer ref={tracksContainerRef} onClick={handleTimelineClick}>
           <RulerContainer>
             <Ruler $zoom={zoom}>{rulerMarks}</Ruler>
           </RulerContainer>
@@ -832,6 +943,7 @@ const Timeline: React.FC = () => {
                   </ClipElement>
                 );
               })}
+              <RowLabel>{track.name}</RowLabel>
             </TrackRow>
           ))}
 
@@ -841,6 +953,7 @@ const Timeline: React.FC = () => {
                 {/* Sample zoom segments - these would come from state in real implementation */}
                 <ZoomSegment $startTime={5} $duration={3} $zoom={zoom} />
                 <ZoomSegment $startTime={15} $duration={2} $zoom={zoom} />
+                <RowLabel>Zooms</RowLabel>
               </AdditionalTimelineTrack>
             </AdditionalTimelineRow>
           )}
@@ -855,6 +968,7 @@ const Timeline: React.FC = () => {
                 <LayoutSegment $startTime={10} $duration={10} $zoom={zoom}>
                   Fullscreen
                 </LayoutSegment>
+                <RowLabel>Camera Layout</RowLabel>
               </AdditionalTimelineTrack>
             </AdditionalTimelineRow>
           )}

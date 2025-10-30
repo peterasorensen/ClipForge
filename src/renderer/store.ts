@@ -67,6 +67,11 @@ export interface TimelineTrack {
   visible: boolean;
 }
 
+interface HistoryState {
+  tracks: TimelineTrack[];
+  duration: number;
+}
+
 interface EditorState {
   // Media library
   mediaItems: MediaItem[];
@@ -87,6 +92,10 @@ interface EditorState {
   exportProgress: number;
   isExporting: boolean;
 
+  // Undo/Redo
+  history: HistoryState[];
+  historyIndex: number;
+
   // Actions
   addMediaItem: (item: MediaItem) => void;
   removeMediaItem: (id: string) => void;
@@ -98,8 +107,9 @@ interface EditorState {
 
   addClip: (clip: TimelineClip) => void;
   removeClip: (id: string) => void;
-  updateClip: (id: string, updates: Partial<TimelineClip>) => void;
+  updateClip: (id: string, updates: Partial<TimelineClip>, skipHistory?: boolean) => void;
   splitClip: (clipId: string, splitTime: number) => void;
+  pushToHistory: () => void;
 
   setCurrentTime: (time: number) => void;
   setZoom: (zoom: number) => void;
@@ -111,6 +121,11 @@ interface EditorState {
 
   setExportProgress: (progress: number) => void;
   setIsExporting: (isExporting: boolean) => void;
+
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
 
   resetEditor: () => void;
 }
@@ -157,7 +172,28 @@ export const useRecordingStore = create<RecordingState>((set) => ({
     }),
 }));
 
-export const useEditorStore = create<EditorState>((set) => ({
+// Helper to deep clone state for history
+const cloneHistoryState = (state: EditorState): HistoryState => ({
+  tracks: JSON.parse(JSON.stringify(state.tracks)),
+  duration: state.duration,
+});
+
+// Helper to push current state to history
+const pushHistory = (state: EditorState): Partial<EditorState> => {
+  const currentState = cloneHistoryState(state);
+  const newHistory = state.history.slice(0, state.historyIndex + 1);
+  newHistory.push(currentState);
+
+  // Limit history to 50 entries
+  const limitedHistory = newHistory.length > 50 ? newHistory.slice(-50) : newHistory;
+
+  return {
+    history: limitedHistory,
+    historyIndex: limitedHistory.length - 1,
+  };
+};
+
+export const useEditorStore = create<EditorState>((set, get) => ({
   // Initial state
   mediaItems: [],
   selectedMediaItemId: null,
@@ -170,6 +206,8 @@ export const useEditorStore = create<EditorState>((set) => ({
   selectedTrackId: null,
   exportProgress: 0,
   isExporting: false,
+  history: [{ tracks: [], duration: 0 }], // Initialize with empty state
+  historyIndex: 0,
 
   // Media library actions
   addMediaItem: (item) =>
@@ -197,22 +235,38 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   // Track actions
   addTrack: (track) =>
-    set((state) => ({
-      tracks: [...state.tracks, track],
-    })),
+    set((state) => {
+      const newTracks = [...state.tracks, track];
+      const newState = { ...state, tracks: newTracks };
+      return {
+        tracks: newTracks,
+        ...pushHistory(newState),
+      };
+    }),
 
   removeTrack: (id) =>
-    set((state) => ({
-      tracks: state.tracks.filter((track) => track.id !== id),
-      selectedTrackId: state.selectedTrackId === id ? null : state.selectedTrackId,
-    })),
+    set((state) => {
+      const newTracks = state.tracks.filter((track) => track.id !== id);
+      const newSelectedTrackId = state.selectedTrackId === id ? null : state.selectedTrackId;
+      const newState = { ...state, tracks: newTracks, selectedTrackId: newSelectedTrackId };
+      return {
+        tracks: newTracks,
+        selectedTrackId: newSelectedTrackId,
+        ...pushHistory(newState),
+      };
+    }),
 
   updateTrack: (id, updates) =>
-    set((state) => ({
-      tracks: state.tracks.map((track) =>
+    set((state) => {
+      const newTracks = state.tracks.map((track) =>
         track.id === id ? { ...track, ...updates } : track
-      ),
-    })),
+      );
+      const newState = { ...state, tracks: newTracks };
+      return {
+        tracks: newTracks,
+        ...pushHistory(newState),
+      };
+    }),
 
   // Clip actions
   addClip: (clip) =>
@@ -230,22 +284,30 @@ export const useEditorStore = create<EditorState>((set) => ({
       const clipEnd = clip.startTime + clip.duration;
       const newDuration = Math.max(state.duration, clipEnd);
 
+      const newState = { ...state, tracks: updatedTracks, duration: newDuration };
       return {
         tracks: updatedTracks,
         duration: newDuration,
+        ...pushHistory(newState),
       };
     }),
 
   removeClip: (id) =>
-    set((state) => ({
-      tracks: state.tracks.map((track) => ({
+    set((state) => {
+      const newTracks = state.tracks.map((track) => ({
         ...track,
         clips: track.clips.filter((clip) => clip.id !== id),
-      })),
-      selectedClipIds: state.selectedClipIds.filter((clipId) => clipId !== id),
-    })),
+      }));
+      const newSelectedClipIds = state.selectedClipIds.filter((clipId) => clipId !== id);
+      const newState = { ...state, tracks: newTracks, selectedClipIds: newSelectedClipIds };
+      return {
+        tracks: newTracks,
+        selectedClipIds: newSelectedClipIds,
+        ...pushHistory(newState),
+      };
+    }),
 
-  updateClip: (id, updates) =>
+  updateClip: (id, updates, skipHistory = false) =>
     set((state) => {
       const updatedTracks = state.tracks.map((track) => ({
         ...track,
@@ -263,9 +325,18 @@ export const useEditorStore = create<EditorState>((set) => ({
         });
       });
 
+      if (skipHistory) {
+        return {
+          tracks: updatedTracks,
+          duration: maxDuration,
+        };
+      }
+
+      const newState = { ...state, tracks: updatedTracks, duration: maxDuration };
       return {
         tracks: updatedTracks,
         duration: maxDuration,
+        ...pushHistory(newState),
       };
     }),
 
@@ -319,9 +390,12 @@ export const useEditorStore = create<EditorState>((set) => ({
           : track
       );
 
+      const newSelectedClipIds = [clip1.id, clip2.id];
+      const newState = { ...state, tracks: updatedTracks, selectedClipIds: newSelectedClipIds };
       return {
         tracks: updatedTracks,
-        selectedClipIds: [clip1.id, clip2.id],
+        selectedClipIds: newSelectedClipIds,
+        ...pushHistory(newState),
       };
     }),
 
@@ -339,6 +413,48 @@ export const useEditorStore = create<EditorState>((set) => ({
   setExportProgress: (progress) => set({ exportProgress: progress }),
   setIsExporting: (isExporting) => set({ isExporting }),
 
+  // Undo/Redo actions
+  pushToHistory: () =>
+    set((state) => pushHistory(state)),
+
+  undo: () =>
+    set((state) => {
+      if (state.historyIndex <= 0) return state; // Can't undo from initial state
+
+      const newIndex = state.historyIndex - 1;
+      const previousState = state.history[newIndex];
+      return {
+        tracks: previousState.tracks,
+        duration: previousState.duration,
+        historyIndex: newIndex,
+        selectedClipIds: [], // Clear selection on undo
+      };
+    }),
+
+  redo: () =>
+    set((state) => {
+      if (state.historyIndex >= state.history.length - 1) return state;
+
+      const newIndex = state.historyIndex + 1;
+      const nextState = state.history[newIndex];
+      return {
+        tracks: nextState.tracks,
+        duration: nextState.duration,
+        historyIndex: newIndex,
+        selectedClipIds: [], // Clear selection on redo
+      };
+    }),
+
+  canUndo: () => {
+    const state = get();
+    return state.historyIndex > 0;
+  },
+
+  canRedo: () => {
+    const state = get();
+    return state.historyIndex < state.history.length - 1;
+  },
+
   // Reset
   resetEditor: () =>
     set({
@@ -353,5 +469,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       selectedTrackId: null,
       exportProgress: 0,
       isExporting: false,
+      history: [{ tracks: [], duration: 0 }],
+      historyIndex: 0,
     }),
 }));

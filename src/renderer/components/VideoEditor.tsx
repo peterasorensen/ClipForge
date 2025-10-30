@@ -295,6 +295,8 @@ const VideoEditor: React.FC = () => {
     addTrack,
     addClip,
     removeClip,
+    undo,
+    redo,
   } = useEditorStore();
 
   const [showExportPanel, setShowExportPanel] = useState(false);
@@ -375,6 +377,20 @@ const VideoEditor: React.FC = () => {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Undo with CMD+Z (Mac) or Ctrl+Z (Windows/Linux)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+
+      // Redo with CMD+Shift+Z (Mac) or Ctrl+Shift+Z (Windows/Linux)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+
       // Delete selected clips with Backspace or Delete key
       if ((e.key === 'Backspace' || e.key === 'Delete') && selectedClipIds.length > 0) {
         // Prevent default browser back navigation on Backspace
@@ -389,7 +405,7 @@ const VideoEditor: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedClipIds, removeClip]);
+  }, [selectedClipIds, removeClip, undo, redo]);
 
   const handlePlayPause = () => {
     setIsPlaying(!isPlaying);
