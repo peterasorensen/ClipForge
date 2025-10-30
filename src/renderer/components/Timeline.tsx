@@ -691,11 +691,13 @@ const Timeline: React.FC = () => {
   };
 
   const handleTimelineClick = (e: React.MouseEvent) => {
-    if (!tracksContainerRef.current) return;
+    if (!timelineContentRef.current) return;
 
-    const rect = tracksContainerRef.current.getBoundingClientRect();
+    const rect = timelineContentRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const time = x / zoom;
+    // Account for padding-left: 16px on TimelineContent
+    const timelineX = x - 16;
+    const time = Math.max(0, timelineX) / zoom;
 
     setCurrentTime(Math.max(0, Math.min(time, duration)));
   };
@@ -903,8 +905,8 @@ const Timeline: React.FC = () => {
         </ZoomControls>
       </TimelineHeader>
 
-      <TimelineContent ref={timelineContentRef}>
-        <TracksContainer ref={tracksContainerRef} onClick={handleTimelineClick}>
+      <TimelineContent ref={timelineContentRef} onClick={handleTimelineClick}>
+        <TracksContainer ref={tracksContainerRef}>
           <RulerContainer>
             <Ruler $zoom={zoom}>{rulerMarks}</Ruler>
           </RulerContainer>
