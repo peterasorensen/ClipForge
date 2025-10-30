@@ -302,6 +302,45 @@ const VideoPlayer: React.FC = () => {
     return aspectRatio.replace(':', ' / ');
   };
 
+  // Helper function to interpolate cursor position
+  const getCursorPositionAtTime = (
+    cursorData: Array<{ x: number; y: number; timestamp: number }> | undefined,
+    timeMs: number
+  ): { x: number; y: number } | null => {
+    if (!cursorData || cursorData.length === 0) {
+      return null;
+    }
+
+    // Find the two closest positions
+    let before = cursorData[0];
+    let after = cursorData[cursorData.length - 1];
+
+    for (let i = 0; i < cursorData.length - 1; i++) {
+      if (cursorData[i].timestamp <= timeMs && cursorData[i + 1].timestamp >= timeMs) {
+        before = cursorData[i];
+        after = cursorData[i + 1];
+        break;
+      }
+    }
+
+    // If time is before first position, return first position
+    if (timeMs <= cursorData[0].timestamp) {
+      return { x: cursorData[0].x, y: cursorData[0].y };
+    }
+
+    // If time is after last position, return last position
+    if (timeMs >= cursorData[cursorData.length - 1].timestamp) {
+      return { x: after.x, y: after.y };
+    }
+
+    // Linear interpolation between before and after
+    const t = (timeMs - before.timestamp) / (after.timestamp - before.timestamp);
+    return {
+      x: before.x + (after.x - before.x) * t,
+      y: before.y + (after.y - before.y) * t,
+    };
+  };
+
   // Calculate current zoom transform
   const getZoomTransform = (): { scale: number; translateX: number; translateY: number } => {
     // Find active zoom segment at current time
@@ -328,9 +367,48 @@ const VideoPlayer: React.FC = () => {
       const translateY = ((0.5 - (activeZoom.targetY || 0.5)) * 100) / scale;
       return { scale, translateX, translateY };
     } else {
-      // Auto mode: For now, keep centered (cursor tracking will be added later)
-      // TODO: Implement cursor tracking data playback
-      return { scale, translateX: 0, translateY: 0 };
+      // Auto mode: Use cursor tracking data
+      // Find the current clip being played
+      const videoTrack = tracks.find((t) => t.type === 'video' && t.visible);
+      if (!videoTrack) {
+        return { scale, translateX: 0, translateY: 0 };
+      }
+
+      const currentClip = videoTrack.clips.find(
+        (clip) =>
+          currentTime >= clip.startTime &&
+          currentTime < clip.startTime + clip.duration
+      );
+
+      if (!currentClip) {
+        return { scale, translateX: 0, translateY: 0 };
+      }
+
+      // Get media item with cursor data
+      const mediaItem = mediaItems.find((item) => item.id === currentClip.mediaItemId);
+      if (!mediaItem || !mediaItem.cursorData) {
+        return { scale, translateX: 0, translateY: 0 };
+      }
+
+      // Calculate time within the clip (accounting for trim)
+      const relativeTime = currentTime - currentClip.startTime;
+      const timeInSource = (relativeTime + currentClip.trimStart) * 1000; // Convert to ms
+
+      // Get interpolated cursor position
+      const cursorPos = getCursorPositionAtTime(mediaItem.cursorData, timeInSource);
+      if (!cursorPos || !videoDimensions) {
+        return { scale, translateX: 0, translateY: 0 };
+      }
+
+      // Convert cursor position to normalized coordinates (0-1)
+      const normalizedX = cursorPos.x / videoDimensions.width;
+      const normalizedY = cursorPos.y / videoDimensions.height;
+
+      // Translate to keep cursor centered
+      const translateX = ((0.5 - normalizedX) * 100) / scale;
+      const translateY = ((0.5 - normalizedY) * 100) / scale;
+
+      return { scale, translateX, translateY };
     }
   };
 

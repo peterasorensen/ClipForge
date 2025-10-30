@@ -34,6 +34,12 @@ interface RecordingState {
 }
 
 // Video Editor Types
+export interface CursorPosition {
+  x: number;
+  y: number;
+  timestamp: number; // milliseconds from start of recording
+}
+
 export interface MediaItem {
   id: string;
   name: string;
@@ -44,6 +50,7 @@ export interface MediaItem {
   width?: number;
   height?: number;
   fileSize: number;
+  cursorData?: CursorPosition[]; // Mouse tracking data for native recordings
 }
 
 export interface TimelineClip {

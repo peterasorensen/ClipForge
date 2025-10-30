@@ -343,8 +343,10 @@ const VideoEditor: React.FC = () => {
           height: recordingData.height,
           fileSize: recordingData.fileSize,
           thumbnail,
+          cursorData: recordingData.cursorData,
         };
 
+        console.log('Media item cursor data:', mediaItem.cursorData?.length || 0, 'positions');
         addMediaItem(mediaItem);
 
         // Automatically add to timeline

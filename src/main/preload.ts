@@ -92,6 +92,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     width?: number;
     height?: number;
     fileSize: number;
+    cursorData?: Array<{ x: number; y: number; timestamp: number }>;
   } | null> =>
     ipcRenderer.invoke('get-pending-recording'),
 
@@ -147,6 +148,7 @@ declare global {
         width?: number;
         height?: number;
         fileSize: number;
+        cursorData?: Array<{ x: number; y: number; timestamp: number }>;
       } | null>;
       importMediaFiles: () => Promise<{ success: boolean; files?: Array<{ filePath: string; name: string; type: string; duration: number; width?: number; height?: number; fileSize: number }>; canceled?: boolean; error?: string }>;
       getVideoMetadata: (filePath: string) => Promise<{ type: 'video' | 'audio' | 'image'; duration: number; width?: number; height?: number }>;

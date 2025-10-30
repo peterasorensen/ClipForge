@@ -23,7 +23,20 @@ interface WindowHelper {
   };
 }
 
+interface MouseTracker {
+  startTracking: () => boolean;
+  stopTracking: () => void;
+  getPositions: () => Array<{
+    x: number;
+    y: number;
+    timestamp: number;
+  }>;
+  clearPositions: () => void;
+  isTracking: () => boolean;
+}
+
 let windowHelper: WindowHelper | undefined;
+let mouseTracker: MouseTracker | undefined;
 
 // Determine the base path for native modules
 const getBasePath = () => {
@@ -59,6 +72,27 @@ if (!windowHelper) {
   throw new Error('Could not load window_helper native addon from any path. Tried: ' + possiblePaths.join(', '));
 }
 
+// Load mouse tracker addon
+const mouseTrackerPaths = [
+  path.join(getBasePath(), 'native', 'mouse-tracker'),
+  path.join(__dirname, '..', '..', 'native', 'mouse-tracker'),
+  path.join(__dirname, '..', '..', '..', 'Resources', 'native', 'mouse-tracker'),
+];
+
+for (const addonPath of mouseTrackerPaths) {
+  try {
+    mouseTracker = require(addonPath);
+    console.log('Successfully loaded mouse tracker from:', addonPath);
+    break;
+  } catch (e) {
+    console.log('Failed to load mouse tracker from:', addonPath);
+  }
+}
+
+if (!mouseTracker) {
+  console.warn('Could not load mouse_tracker native addon. Cursor tracking will not be available.');
+}
+
 // In development mode, these are provided by Vite
 // In production, they're provided by Electron Forge
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
@@ -73,6 +107,7 @@ let recordingToolbar: BrowserWindow | null = null;
 let editorWindow: BrowserWindow | null = null;
 let recordingConfig: { selectedSourceId?: string | null; selectedArea?: { x: number; y: number; width: number; height: number } | null } | null = null;
 let pendingRecordingData: Uint8Array | null = null;
+let pendingCursorData: Array<{ x: number; y: number; timestamp: number }> | null = null;
 let tray: Tray | null = null;
 
 const createTray = (): void => {
@@ -480,6 +515,20 @@ ipcMain.on('start-recording', (_event, config?: { selectedSourceId?: string | nu
   recordingConfig = config || null;
   console.log('Main: Received start-recording with config:', recordingConfig);
 
+  // Start mouse tracking if available
+  if (mouseTracker) {
+    try {
+      const success = mouseTracker.startTracking();
+      if (success) {
+        console.log('Mouse tracking started successfully');
+      } else {
+        console.warn('Failed to start mouse tracking - may need accessibility permissions');
+      }
+    } catch (error) {
+      console.error('Error starting mouse tracking:', error);
+    }
+  }
+
   if (controlBar) {
     controlBar.hide();
   }
@@ -541,6 +590,19 @@ ipcMain.handle('check-ffmpeg', async () => {
 ipcMain.on('open-editor', (_event, videoData?: Uint8Array) => {
   if (videoData) {
     pendingRecordingData = videoData;
+  }
+
+  // Stop mouse tracking and capture data
+  if (mouseTracker && mouseTracker.isTracking()) {
+    try {
+      const positions = mouseTracker.getPositions();
+      pendingCursorData = positions;
+      mouseTracker.stopTracking();
+      console.log(`Captured ${positions.length} cursor positions`);
+    } catch (error) {
+      console.error('Error capturing cursor data:', error);
+      pendingCursorData = null;
+    }
   }
 
   if (recordingToolbar) {
@@ -626,7 +688,9 @@ ipcMain.handle('get-pending-recording', async () => {
     console.log('Video metadata:', metadata);
 
     // Clear pending data
+    const cursorData = pendingCursorData;
     pendingRecordingData = null;
+    pendingCursorData = null;
 
     return {
       filePath: tempMp4Path,
@@ -636,10 +700,12 @@ ipcMain.handle('get-pending-recording', async () => {
       width: metadata.width,
       height: metadata.height,
       fileSize: mp4Stats.size,
+      cursorData: cursorData || undefined,
     };
   } catch (error) {
     console.error('Error processing pending recording:', error);
     pendingRecordingData = null;
+    pendingCursorData = null;
     return null;
   }
 });

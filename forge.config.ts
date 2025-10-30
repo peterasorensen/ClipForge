@@ -50,21 +50,36 @@ const config: ForgeConfig = {
       // Copy only essential files from native directory (excluding node_modules)
       const windowHelperSrc = path.join(nativeSourcePath, 'window-helper');
       const windowHelperDest = path.join(nativeDestPath, 'window-helper');
+      const mouseTrackerSrc = path.join(nativeSourcePath, 'mouse-tracker');
+      const mouseTrackerDest = path.join(nativeDestPath, 'mouse-tracker');
 
       // Clean the destination first to remove any existing files
       if (await fs.pathExists(nativeDestPath)) {
         await fs.remove(nativeDestPath);
       }
       await fs.ensureDir(windowHelperDest);
+      await fs.ensureDir(mouseTrackerDest);
 
       // Copy only the files we need (not node_modules)
       const filesToCopy = ['index.js', 'index.d.ts', 'package.json', 'build'];
+
+      // Copy window-helper
       for (const file of filesToCopy) {
         const srcPath = path.join(windowHelperSrc, file);
         const destPath = path.join(windowHelperDest, file);
         if (await fs.pathExists(srcPath)) {
           await fs.copy(srcPath, destPath);
-          console.log(`  Copied ${file}`);
+          console.log(`  Copied window-helper/${file}`);
+        }
+      }
+
+      // Copy mouse-tracker
+      for (const file of filesToCopy) {
+        const srcPath = path.join(mouseTrackerSrc, file);
+        const destPath = path.join(mouseTrackerDest, file);
+        if (await fs.pathExists(srcPath)) {
+          await fs.copy(srcPath, destPath);
+          console.log(`  Copied mouse-tracker/${file}`);
         }
       }
 
